@@ -21,12 +21,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     reconciler = CompensationReconciler(hass, entry, runtime)
-    await reconciler.async_setup()
-    runtime.compensation_reconciler = reconciler
-
     deposit = DepositCoordinator(hass, entry, runtime)
-    await deposit.async_setup()
+    runtime.compensation_reconciler = reconciler
     runtime.deposit_coordinator = deposit
+
+    await reconciler.async_setup()
+    await deposit.async_setup()
     return True
 
 
