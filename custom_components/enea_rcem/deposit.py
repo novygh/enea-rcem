@@ -11,6 +11,7 @@ from typing import Any
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder import statistics as recorder_statistics
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_time_change
@@ -27,6 +28,7 @@ from .tariffs import HISTORICAL_TARIFFS, tariff_for_date
 _LOGGER = logging.getLogger(__name__)
 
 REFUND_LIMIT = 0.20
+_RECORDER_ENERGY_UNITS = {"energy": UnitOfEnergy.KILO_WATT_HOUR}
 
 
 @dataclass(slots=True)
@@ -298,7 +300,7 @@ class DepositCoordinator:
             now.astimezone(UTC),
             {self.import_stat_id, self.compensation_stat_id},
             "month",
-            None,
+            _RECORDER_ENERGY_UNITS,
             {"change", "sum"},
         )
 
