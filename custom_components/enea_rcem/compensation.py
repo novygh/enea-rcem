@@ -81,8 +81,8 @@ class CompensationReconciler:
             async_track_time_change(
                 self.hass,
                 self._handle_daily_reconcile,
-                hour=3,
-                minute=17,
+                hour=0,
+                minute=15,
                 second=0,
             )
         )
