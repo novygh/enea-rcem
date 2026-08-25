@@ -23,8 +23,10 @@ from .const import (
     CONF_COGENERATION_NET,
     CONF_COMMERCIAL_FEE_NET,
     CONF_ENERGY_PRICE_NET,
+    CONF_EXPORT_CORRECTION_PERCENT,
     CONF_EXPORT_ENTITY,
     CONF_FIXED_NETWORK_NET,
+    CONF_IMPORT_CORRECTION_PERCENT,
     CONF_IMPORT_ENTITY,
     CONF_OZE_NET,
     CONF_QUALITY_NET,
@@ -36,7 +38,9 @@ from .const import (
     DEFAULT_COGENERATION_NET,
     DEFAULT_COMMERCIAL_FEE_NET,
     DEFAULT_ENERGY_PRICE_NET,
+    DEFAULT_EXPORT_CORRECTION_PERCENT,
     DEFAULT_FIXED_NETWORK_NET,
+    DEFAULT_IMPORT_CORRECTION_PERCENT,
     DEFAULT_OZE_NET,
     DEFAULT_QUALITY_NET,
     DEFAULT_SUBSCRIPTION_FEE_NET,
@@ -90,6 +94,30 @@ class EneaRcemRuntime:
             return float(self.options.get(key, default))
         except (TypeError, ValueError):
             return default
+
+    @property
+    def import_correction_percent(self) -> float:
+        """Return post-balance import correction in percent."""
+        return self._rate(
+            CONF_IMPORT_CORRECTION_PERCENT, DEFAULT_IMPORT_CORRECTION_PERCENT
+        )
+
+    @property
+    def export_correction_percent(self) -> float:
+        """Return post-balance export correction in percent."""
+        return self._rate(
+            CONF_EXPORT_CORRECTION_PERCENT, DEFAULT_EXPORT_CORRECTION_PERCENT
+        )
+
+    @property
+    def import_correction_multiplier(self) -> float:
+        """Return import multiplier derived from the configured percentage."""
+        return max(0.0, 1.0 + self.import_correction_percent / 100.0)
+
+    @property
+    def export_correction_multiplier(self) -> float:
+        """Return export multiplier derived from the configured percentage."""
+        return max(0.0, 1.0 + self.export_correction_percent / 100.0)
 
     @property
     def vat_multiplier(self) -> float:
@@ -167,12 +195,7 @@ class EneaRcemRuntime:
         hour = self._hour_key(now)
         self._data = stored if stored else self._fresh_data(hour)
 
-        # Storage written by releases before 0.1.3 did not distinguish a
-        # complete hourly bucket from the partial hour in which the integration
-        # was first loaded.
         self._data.setdefault("bucket_valid", False)
-        # Releases before 0.1.6 did not persist the timestamp belonging to each
-        # physical meter baseline. They are seeded during setup below.
         self._data.setdefault("last_import_time", None)
         self._data.setdefault("last_export_time", None)
 
@@ -200,9 +223,6 @@ class EneaRcemRuntime:
         )
 
         await self.async_refresh_rcem()
-        # Seed a durable snapshot immediately. Source meters can update more
-        # often than the delayed Store debounce interval, so relying only on a
-        # delayed save can leave the on-disk snapshot stale for a long time.
         await self._store.async_save(self._serialize())
 
     async def async_shutdown(self) -> None:
@@ -299,9 +319,6 @@ class EneaRcemRuntime:
                 self._recovery_pending = False
                 return
 
-            # Keep the old baseline until both physical meter totals are
-            # available. The first later source update will retry recovery,
-            # so cumulative kWh are never silently discarded.
             self._recovery_pending = True
             _LOGGER.debug(
                 "Waiting for both source meters before reconstructing gap "
@@ -366,9 +383,6 @@ class EneaRcemRuntime:
                 self._data["bucket_export"] = exp
                 break
 
-            # A reconstructed historical hour is deliberately approximate, but
-            # preserving every trustworthy positive meter delta is preferable
-            # to dropping energy.
             self._finalize_values(hour_key, imp, exp)
 
         self._data["last_import_total"] = import_now
@@ -531,8 +545,6 @@ class EneaRcemRuntime:
             self._resume_source_totals(now)
             if self._recovery_pending:
                 return
-            # Recovery already incorporated the current physical meter values.
-            # Do not count this state change a second time.
             return
 
         self._roll_to(now)
@@ -587,13 +599,9 @@ class EneaRcemRuntime:
             _LOGGER.debug("Discarding incomplete hourly bucket %s", current)
 
         self._data["bucket_hour"] = target
-        # Once Home Assistant crosses an hour boundary while this runtime is
-        # active, the new bucket starts at the real boundary and is complete.
         self._data["bucket_valid"] = True
         self._data["bucket_import"] = 0.0
         self._data["bucket_export"] = 0.0
-        # Hour boundaries are accounting checkpoints. Persist them immediately
-        # so frequent meter events cannot indefinitely postpone Store writes.
         self._save_now()
         self._notify()
 
@@ -605,8 +613,15 @@ class EneaRcemRuntime:
         self._finalize_values(hour_key, imp, exp)
 
     def _finalize_values(self, hour_key: str, imp: float, exp: float) -> None:
-        balanced_import = max(imp - exp, 0.0)
-        balanced_export = max(exp - imp, 0.0)
+        raw_balanced_import = max(imp - exp, 0.0)
+        raw_balanced_export = max(exp - imp, 0.0)
+
+        # Corrections are deliberately applied after hourly net balancing.
+        # The physical source totals remain untouched, import/export can be
+        # corrected independently, and changing one side cannot alter the
+        # opposite side's phase/netting behaviour.
+        balanced_import = raw_balanced_import * self.import_correction_multiplier
+        balanced_export = raw_balanced_export * self.export_correction_multiplier
 
         self._data["balanced_import_total"] = (
             self.balanced_import_total + balanced_import
@@ -627,8 +642,6 @@ class EneaRcemRuntime:
         self._data["monthly_import"] = monthly_import
         self._data["monthly_export"] = monthly_export
 
-        # Fixed charges accrue per calendar hour. Reconstructed historical hours
-        # therefore keep their share of monthly fixed fees after an HA outage.
         fixed_hour = self.fixed_monthly_gross / self._hours_in_month(hour_key)
         variable = balanced_import * self.variable_rate_gross
         self._data["import_cost_total"] = (
