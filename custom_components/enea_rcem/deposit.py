@@ -61,6 +61,15 @@ class DepositSnapshot:
     oldest_max_refund: float | None
 
 
+@dataclass(slots=True)
+class SettledMonthSnapshot:
+    """Latest closed month for which PSE RCEm is available."""
+
+    month: str
+    import_cost: float
+    export_compensation: float
+
+
 def _month_add(month: str, delta: int) -> str:
     year, mon = map(int, month.split("-"))
     absolute = year * 12 + (mon - 1) + delta
@@ -218,6 +227,7 @@ class DepositCoordinator:
         self.entry = entry
         self.runtime = runtime
         self.import_stat_id: str | None = None
+        self.import_cost_stat_id: str | None = None
         self.compensation_stat_id: str | None = None
         self._unsubs: list[Callable[[], None]] = []
         self._running = False
@@ -229,15 +239,23 @@ class DepositCoordinator:
         self.import_stat_id = registry.async_get_entity_id(
             "sensor", DOMAIN, f"{self.entry.entry_id}_balanced_import"
         )
+        self.import_cost_stat_id = registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{self.entry.entry_id}_import_cost"
+        )
         self.compensation_stat_id = registry.async_get_entity_id(
             "sensor", DOMAIN, f"{self.entry.entry_id}_export_compensation"
         )
 
-        if self.import_stat_id is None or self.compensation_stat_id is None:
+        if (
+            self.import_stat_id is None
+            or self.import_cost_stat_id is None
+            or self.compensation_stat_id is None
+        ):
             _LOGGER.error(
                 "Cannot start prosumer deposit ledger: statistics entities were not "
-                "found (import=%s, compensation=%s)",
+                "found (import=%s, import_cost=%s, compensation=%s)",
                 self.import_stat_id,
+                self.import_cost_stat_id,
                 self.compensation_stat_id,
             )
             return
@@ -270,7 +288,11 @@ class DepositCoordinator:
 
     async def async_refresh(self) -> None:
         """Refresh the reconstructed deposit snapshot."""
-        if self.import_stat_id is None or self.compensation_stat_id is None:
+        if (
+            self.import_stat_id is None
+            or self.import_cost_stat_id is None
+            or self.compensation_stat_id is None
+        ):
             return
         if self._running:
             self._rerun_requested = True
@@ -289,6 +311,7 @@ class DepositCoordinator:
 
     async def _async_refresh_once(self) -> None:
         assert self.import_stat_id is not None
+        assert self.import_cost_stat_id is not None
         assert self.compensation_stat_id is not None
 
         now = dt_util.now()
@@ -302,13 +325,20 @@ class DepositCoordinator:
             self.hass,
             start_local.astimezone(UTC),
             now.astimezone(UTC),
-            {self.import_stat_id, self.compensation_stat_id},
+            {
+                self.import_stat_id,
+                self.import_cost_stat_id,
+                self.compensation_stat_id,
+            },
             "month",
             _RECORDER_ENERGY_UNITS,
             {"change", "sum"},
         )
 
         imports = self._changes_by_month(monthly.get(self.import_stat_id, []))
+        import_costs = self._changes_by_month(
+            monthly.get(self.import_cost_stat_id, [])
+        )
         compensation = self._changes_by_month(
             monthly.get(self.compensation_stat_id, [])
         )
@@ -325,7 +355,31 @@ class DepositCoordinator:
             current_active_energy_gross=current_active_energy_gross,
         )
         setattr(self.runtime, "deposit_snapshot", snapshot)
+
+        settled_month = self._latest_settled_month(current_month)
+        if settled_month is None:
+            setattr(self.runtime, "settled_month_snapshot", None)
+        else:
+            setattr(
+                self.runtime,
+                "settled_month_snapshot",
+                SettledMonthSnapshot(
+                    month=settled_month,
+                    import_cost=float(import_costs.get(settled_month, 0.0)),
+                    export_compensation=float(
+                        compensation.get(settled_month, 0.0)
+                    ),
+                ),
+            )
+
         self.runtime._notify()
+
+    def _latest_settled_month(self, current_month: str) -> str | None:
+        """Return newest closed month with an official RCEm publication."""
+        candidates = [
+            month for month in self.runtime.rcem_prices if month < current_month
+        ]
+        return max(candidates) if candidates else None
 
     def _changes_by_month(self, rows: list[dict[str, Any]]) -> dict[str, float]:
         tz = dt_util.get_time_zone(self.hass.config.time_zone)
