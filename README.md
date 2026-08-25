@@ -2,7 +2,7 @@
 
 Home Assistant custom integration for Polish prosumer settlement with **Enea / Enea Operator G11** and monthly **PSE RCEm**.
 
-**Current stable version: 1.0.0**
+**Current stable version: 1.0.1**
 
 > This project is intended to reproduce and monitor settlement logic in Home Assistant. Always verify tariff values and final billing against your contract and invoice.
 
@@ -17,6 +17,7 @@ The integration:
 - fetches official monthly RCEm values from PSE,
 - detects later PSE RCEm corrections,
 - keeps export compensation assigned to the month in which the energy was exported,
+- exposes the latest fully settled month with its import cost and export compensation for dashboards,
 - applies historical prosumer-factor rules,
 - calculates gross import cost from configurable Enea / Enea Operator rates and VAT,
 - accrues fixed monthly charges across the month,
@@ -40,6 +41,14 @@ The integration:
 - **Import cost** — cumulative gross import cost.
 - **Export compensation** — cumulative value of settled export for months with published RCEm.
 - **Current month estimated export compensation** — estimate based on the latest available RCEm until the current month is officially published.
+
+The **Export compensation** sensor also exposes dashboard-oriented attributes for the latest closed month that has both an official RCEm publication and Recorder billing data:
+
+- `last_settled_month`,
+- `last_settled_import_cost_pln`,
+- `last_settled_export_compensation_pln`.
+
+If the immediately preceding calendar month is not settled yet, the integration automatically falls back to the newest earlier month that is settled.
 
 ### Prosumer deposit
 
@@ -116,7 +125,7 @@ Deposit sensors are current snapshots; the cumulative historical accounting rema
 
 ## Historical data
 
-Version 1.0.0 does **not** automatically invent pre-installation history. Advanced migration/backfill tooling is included in `tools/` for installations where trustworthy historical cumulative meter statistics already exist.
+Version 1.0.1 does **not** automatically invent pre-installation history. Advanced migration/backfill tooling is included in `tools/` for installations where trustworthy historical cumulative meter statistics already exist.
 
 Historical writes to Recorder should be treated as an advanced operation: make a Home Assistant backup first and validate the resulting long-term statistics after migration.
 
