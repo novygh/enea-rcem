@@ -5,9 +5,9 @@
   "config_flow": true,
   "documentation": "https://github.com/novygh/enea-rcem",
   "issue_tracker": "https://github.com/novygh/enea-rcem/issues",
-  "integration_type": "helper",
+  "integration_type": "service",
   "iot_class": "cloud_polling",
   "requirements": [],
   "single_config_entry": true,
-  "version": "0.1.1"
+  "version": "0.1.2"
 }
