@@ -45,6 +45,7 @@ def _import_cost_attrs(runtime: EneaRcemRuntime) -> dict:
     return {
         "variable_rate_gross_pln_kwh": round(runtime.variable_rate_gross, 6),
         "fixed_monthly_gross_pln": round(runtime.fixed_monthly_gross, 4),
+        "import_correction_percent": runtime.import_correction_percent,
         "data_gap_count": runtime.gap_count,
     }
 
@@ -52,6 +53,7 @@ def _import_cost_attrs(runtime: EneaRcemRuntime) -> dict:
 def _comp_attrs(runtime: EneaRcemRuntime) -> dict:
     return {
         "settled_months": sorted(runtime._data.get("monthly_compensation", {})),
+        "export_correction_percent": runtime.export_correction_percent,
         "data_gap_count": runtime.gap_count,
         "prosumer_factor": PROSUMER_DEPOSIT_FACTOR,
     }
@@ -88,7 +90,10 @@ SENSORS: tuple[EneaRcemSensorDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         suggested_display_precision=3,
         value_fn=lambda r: r.balanced_import_total,
-        attrs_fn=lambda r: {"data_gap_count": r.gap_count},
+        attrs_fn=lambda r: {
+            "correction_percent": r.import_correction_percent,
+            "data_gap_count": r.gap_count,
+        },
     ),
     EneaRcemSensorDescription(
         key="balanced_export",
@@ -98,7 +103,10 @@ SENSORS: tuple[EneaRcemSensorDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         suggested_display_precision=3,
         value_fn=lambda r: r.balanced_export_total,
-        attrs_fn=lambda r: {"data_gap_count": r.gap_count},
+        attrs_fn=lambda r: {
+            "correction_percent": r.export_correction_percent,
+            "data_gap_count": r.gap_count,
+        },
     ),
     EneaRcemSensorDescription(
         key="import_cost",
@@ -129,6 +137,7 @@ SENSORS: tuple[EneaRcemSensorDescription, ...] = (
         value_fn=lambda r: r.current_month_export_estimate,
         attrs_fn=lambda r: {
             "export_kwh": round(r.current_month_export, 4),
+            "export_correction_percent": r.export_correction_percent,
             "price_basis_month": r.latest_rcem.month if r.latest_rcem else None,
             "estimated": True,
         },
