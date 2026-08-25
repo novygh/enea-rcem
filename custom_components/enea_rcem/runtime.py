@@ -159,8 +159,9 @@ class EneaRcemRuntime:
 
     @property
     def export_compensation_total(self) -> float:
+        baseline = float(self._data.get("historical_compensation_baseline", 0.0))
         values = self._data.get("monthly_compensation", {})
-        return float(sum(float(value) for value in values.values()))
+        return baseline + float(sum(float(value) for value in values.values()))
 
     @property
     def gap_count(self) -> int:
