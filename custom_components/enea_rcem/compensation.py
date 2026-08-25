@@ -10,6 +10,7 @@ from typing import Any
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder import statistics as recorder_statistics
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later, async_track_time_change
@@ -24,6 +25,7 @@ _LOGGER = logging.getLogger(__name__)
 _RECONCILE_TOLERANCE_PLN = 0.005
 _PRICE_CHANGE_DELAY = timedelta(minutes=7)
 _RETRY_DELAY = timedelta(minutes=10)
+_RECORDER_ENERGY_UNITS = {"energy": UnitOfEnergy.KILO_WATT_HOUR}
 
 
 class CompensationReconciler:
@@ -174,7 +176,7 @@ class CompensationReconciler:
             end_utc,
             {self.export_stat_id, self.compensation_stat_id},
             "month",
-            None,
+            _RECORDER_ENERGY_UNITS,
             {"change", "sum"},
         )
 
