@@ -16,8 +16,10 @@ from .const import (
     CONF_COGENERATION_NET,
     CONF_COMMERCIAL_FEE_NET,
     CONF_ENERGY_PRICE_NET,
+    CONF_EXPORT_CORRECTION_PERCENT,
     CONF_EXPORT_ENTITY,
     CONF_FIXED_NETWORK_NET,
+    CONF_IMPORT_CORRECTION_PERCENT,
     CONF_IMPORT_ENTITY,
     CONF_OZE_NET,
     CONF_QUALITY_NET,
@@ -29,7 +31,9 @@ from .const import (
     DEFAULT_COGENERATION_NET,
     DEFAULT_COMMERCIAL_FEE_NET,
     DEFAULT_ENERGY_PRICE_NET,
+    DEFAULT_EXPORT_CORRECTION_PERCENT,
     DEFAULT_FIXED_NETWORK_NET,
+    DEFAULT_IMPORT_CORRECTION_PERCENT,
     DEFAULT_OZE_NET,
     DEFAULT_QUALITY_NET,
     DEFAULT_SUBSCRIPTION_FEE_NET,
@@ -60,9 +64,35 @@ def _number(
     )
 
 
+def _correction_number() -> selector.NumberSelector:
+    """Return a signed percentage correction selector."""
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(
+            min=-100,
+            max=100,
+            step=0.01,
+            mode=selector.NumberSelectorMode.BOX,
+        )
+    )
+
+
 def _rates_schema(values: dict[str, Any]) -> vol.Schema:
     return vol.Schema(
         {
+            vol.Required(
+                CONF_IMPORT_CORRECTION_PERCENT,
+                default=values.get(
+                    CONF_IMPORT_CORRECTION_PERCENT,
+                    DEFAULT_IMPORT_CORRECTION_PERCENT,
+                ),
+            ): _correction_number(),
+            vol.Required(
+                CONF_EXPORT_CORRECTION_PERCENT,
+                default=values.get(
+                    CONF_EXPORT_CORRECTION_PERCENT,
+                    DEFAULT_EXPORT_CORRECTION_PERCENT,
+                ),
+            ): _correction_number(),
             vol.Required(
                 CONF_ENERGY_PRICE_NET,
                 default=values.get(CONF_ENERGY_PRICE_NET, DEFAULT_ENERGY_PRICE_NET),
@@ -178,7 +208,7 @@ class EneaRcemOptionsFlow(config_entries.OptionsFlow):
     """Edit current billing rates."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Edit rates."""
+        """Edit rates and meter corrections."""
         if user_input is not None:
             return self.async_create_entry(data=user_input)
 
