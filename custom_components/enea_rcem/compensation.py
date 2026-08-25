@@ -89,7 +89,11 @@ class CompensationReconciler:
             )
         )
 
-        await self.async_reconcile()
+        self.entry.async_create_background_task(
+            self.hass,
+            self.async_reconcile(),
+            "Enea RCEm compensation reconciliation",
+        )
 
     async def async_shutdown(self) -> None:
         """Stop listeners and pending reconciliation."""
