@@ -80,6 +80,18 @@ def _month_date(month: str) -> date:
 def _historical_active_energy_gross(month: str) -> float:
     period = tariff_for_date(_month_date(month))
     if period is None:
+        # The contract starts on 2024-06-12, so the first calendar month has
+        # no tariff on its first day. Use the tariff that starts inside that
+        # month instead of inventing a pre-contract rate.
+        period = next(
+            (
+                candidate
+                for candidate in HISTORICAL_TARIFFS
+                if f"{candidate.start.year:04d}-{candidate.start.month:02d}" == month
+            ),
+            None,
+        )
+    if period is None:
         raise ValueError(f"No historical tariff for {month}")
     return period.energy_price_net * (1.0 + period.vat_rate / 100.0)
 
@@ -166,7 +178,11 @@ def build_deposit_snapshot(
             current_purchase = energy_purchase
 
     balance = sum(lot.remaining for lot in lots)
-    oldest = min(lots, key=lambda lot: (lot.assigned_month, lot.source_month)) if lots else None
+    oldest = (
+        min(lots, key=lambda lot: (lot.assigned_month, lot.source_month))
+        if lots
+        else None
+    )
 
     return DepositSnapshot(
         balance=balance,
