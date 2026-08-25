@@ -79,6 +79,7 @@ class EneaRcemRuntime:
         self._data: dict[str, Any] = {}
         self.rcem_prices: dict[str, RcemPrice] = {}
         self.last_rcem_error: str | None = None
+        self._recovery_pending = False
 
     @property
     def options(self) -> dict[str, Any]:
@@ -153,7 +154,12 @@ class EneaRcemRuntime:
         latest = self.latest_rcem
         if latest is None:
             return None
-        return self.current_month_export * latest.price_pln_mwh / 1000.0 * PROSUMER_DEPOSIT_FACTOR
+        return (
+            self.current_month_export
+            * latest.price_pln_mwh
+            / 1000.0
+            * PROSUMER_DEPOSIT_FACTOR
+        )
 
     async def async_setup(self) -> None:
         stored = await self._store.async_load()
@@ -163,26 +169,31 @@ class EneaRcemRuntime:
 
         # Storage written by releases before 0.1.3 did not distinguish a
         # complete hourly bucket from the partial hour in which the integration
-        # was first loaded. Treat such an in-progress bucket as incomplete so it
-        # can never be billed as a full Enea balancing hour.
+        # was first loaded.
         self._data.setdefault("bucket_valid", False)
 
         self._load_cached_rcem()
         self._resume_source_totals(now)
 
-        self._unsubs.append(async_track_state_change_event(
-            self.hass,
-            [self.import_entity, self.export_entity],
-            self._async_source_changed,
-        ))
-        self._unsubs.append(async_track_time_change(
-            self.hass, self._async_hour_tick, minute=0, second=2
-        ))
-        self._unsubs.append(async_track_time_interval(
-            self.hass,
-            self._async_rcem_tick,
-            timedelta(hours=RCEM_REFRESH_HOURS),
-        ))
+        self._unsubs.append(
+            async_track_state_change_event(
+                self.hass,
+                [self.import_entity, self.export_entity],
+                self._async_source_changed,
+            )
+        )
+        self._unsubs.append(
+            async_track_time_change(
+                self.hass, self._async_hour_tick, minute=0, second=2
+            )
+        )
+        self._unsubs.append(
+            async_track_time_interval(
+                self.hass,
+                self._async_rcem_tick,
+                timedelta(hours=RCEM_REFRESH_HOURS),
+            )
+        )
 
         await self.async_refresh_rcem()
         self._schedule_save()
@@ -226,7 +237,10 @@ class EneaRcemRuntime:
     def _serialize(self) -> dict[str, Any]:
         data = dict(self._data)
         data["rcem_prices"] = {
-            month: {"price_pln_mwh": item.price_pln_mwh, "published": item.published}
+            month: {
+                "price_pln_mwh": item.price_pln_mwh,
+                "published": item.published,
+            }
             for month, item in self.rcem_prices.items()
         }
         return data
@@ -262,24 +276,143 @@ class EneaRcemRuntime:
         export_now = _number(self.hass.states.get(self.export_entity))
 
         if stored_hour != current_hour:
-            # Home Assistant was not continuously observing the whole stored
-            # balancing hour, so its import/export split cannot be reconstructed
-            # safely. Discard that incomplete bucket instead of guessing.
-            if self._data.get("bucket_valid") and (
-                import_now is not None or export_now is not None
+            if self._recover_gap(
+                current_hour=current_hour,
+                import_now=import_now,
+                export_now=export_now,
             ):
-                self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
+                self._recovery_pending = False
+                return
 
+            # Keep the old baseline until both physical meter totals are
+            # available. The first later source update will retry recovery,
+            # so cumulative kWh are never silently discarded.
+            self._recovery_pending = True
+            _LOGGER.debug(
+                "Waiting for both source meters before reconstructing gap "
+                "from %s to %s",
+                stored_hour,
+                current_hour,
+            )
+            return
+
+        self._recovery_pending = False
+        self._resume_one("import", import_now)
+        self._resume_one("export", export_now)
+
+    def _recover_gap(
+        self,
+        *,
+        current_hour: str,
+        import_now: float | None,
+        export_now: float | None,
+    ) -> bool:
+        stored_hour = self._data.get("bucket_hour")
+        if not stored_hour or stored_hour == current_hour:
+            return True
+        if import_now is None or export_now is None:
+            return False
+
+        previous_import = self._data.get("last_import_total")
+        previous_export = self._data.get("last_export_total")
+        if previous_import is None or previous_export is None:
+            # There is no trustworthy baseline to reconstruct from. Rebase
+            # without inventing energy, but keep the gap visible.
+            self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
             self._data["bucket_hour"] = current_hour
             self._data["bucket_valid"] = False
             self._data["bucket_import"] = 0.0
             self._data["bucket_export"] = 0.0
             self._data["last_import_total"] = import_now
             self._data["last_export_total"] = export_now
-            return
+            return True
 
-        self._resume_one("import", import_now)
-        self._resume_one("export", export_now)
+        delta_import = import_now - float(previous_import)
+        delta_export = export_now - float(previous_export)
+        if delta_import < -1e-9 or delta_export < -1e-9:
+            _LOGGER.warning(
+                "Source meter decreased across restart; rebasing without "
+                "reconstructing the missing interval"
+            )
+            self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
+            self._data["bucket_hour"] = current_hour
+            self._data["bucket_valid"] = False
+            self._data["bucket_import"] = 0.0
+            self._data["bucket_export"] = 0.0
+            self._data["last_import_total"] = import_now
+            self._data["last_export_total"] = export_now
+            return True
+
+        hour_keys = self._hour_keys(stored_hour, current_hour)
+        if not hour_keys:
+            return False
+
+        # The meters preserve cumulative totals while Home Assistant is down.
+        # Split only the unobserved increase equally across every affected hour.
+        # Any energy already observed before shutdown remains in the old bucket.
+        share_import = max(delta_import, 0.0) / len(hour_keys)
+        share_export = max(delta_export, 0.0) / len(hour_keys)
+
+        old_import = max(float(self._data.get("bucket_import", 0.0)), 0.0)
+        old_export = max(float(self._data.get("bucket_export", 0.0)), 0.0)
+
+        for index, hour_key in enumerate(hour_keys):
+            if index == 0:
+                imp = old_import + share_import
+                exp = old_export + share_export
+            else:
+                imp = share_import
+                exp = share_export
+
+            if hour_key == current_hour:
+                self._data["bucket_hour"] = current_hour
+                self._data["bucket_valid"] = True
+                self._data["bucket_import"] = imp
+                self._data["bucket_export"] = exp
+                break
+
+            # A reconstructed historical hour is deliberately approximate, but
+            # preserving cumulative kWh is preferable to dropping energy.
+            self._finalize_values(hour_key, imp, exp)
+
+        self._data["last_import_total"] = import_now
+        self._data["last_export_total"] = export_now
+        self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
+
+        _LOGGER.warning(
+            "Reconstructed Home Assistant data gap from %s to %s across %d "
+            "hour buckets; distributed %.6f kWh import and %.6f kWh export "
+            "equally",
+            stored_hour,
+            current_hour,
+            len(hour_keys),
+            max(delta_import, 0.0),
+            max(delta_export, 0.0),
+        )
+        self._recalculate_compensation()
+        self._schedule_save()
+        self._notify()
+        return True
+
+    def _hour_keys(self, start_key: str, end_key: str) -> list[str]:
+        start = dt_util.parse_datetime(start_key)
+        end = dt_util.parse_datetime(end_key)
+        if start is None or end is None:
+            return []
+        if start.tzinfo is None or end.tzinfo is None:
+            return []
+
+        tz = dt_util.get_time_zone(self.hass.config.time_zone)
+        current_utc = start.astimezone(UTC)
+        end_utc = end.astimezone(UTC)
+        if current_utc > end_utc:
+            return []
+
+        keys: list[str] = []
+        while current_utc <= end_utc:
+            keys.append(self._hour_key(current_utc.astimezone(tz)))
+            current_utc += timedelta(hours=1)
+        return keys
 
     def _resume_one(self, kind: str, current: float | None) -> None:
         if current is None:
@@ -289,7 +422,9 @@ class EneaRcemRuntime:
         if previous is not None:
             delta = current - float(previous)
             if delta >= 0:
-                self._data[f"bucket_{kind}"] = float(self._data.get(f"bucket_{kind}", 0.0)) + delta
+                self._data[f"bucket_{kind}"] = (
+                    float(self._data.get(f"bucket_{kind}", 0.0)) + delta
+                )
             elif abs(delta) > 1e-9:
                 self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
                 self._data["bucket_valid"] = False
@@ -304,6 +439,15 @@ class EneaRcemRuntime:
             return
 
         now = dt_util.now()
+
+        if self._recovery_pending:
+            self._resume_source_totals(now)
+            if self._recovery_pending:
+                return
+            # Recovery already incorporated the current physical meter values.
+            # Do not count this state change a second time.
+            return
+
         self._roll_to(now)
         kind = "import" if entity_id == self.import_entity else "export"
         key = f"last_{kind}_total"
@@ -318,19 +462,28 @@ class EneaRcemRuntime:
         self._data[key] = value
         if delta < -1e-9:
             _LOGGER.warning(
-                "%s source meter decreased from %.6f to %.6f; rebasing without adding delta",
-                kind, float(previous), value,
+                "%s source meter decreased from %.6f to %.6f; "
+                "rebasing without adding delta",
+                kind,
+                float(previous),
+                value,
             )
             self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
             self._data["bucket_valid"] = False
         elif delta > 0:
-            self._data[f"bucket_{kind}"] = float(self._data.get(f"bucket_{kind}", 0.0)) + delta
+            self._data[f"bucket_{kind}"] = (
+                float(self._data.get(f"bucket_{kind}", 0.0)) + delta
+            )
 
         self._schedule_save()
         self._notify()
 
     @callback
     def _async_hour_tick(self, now: datetime) -> None:
+        if self._recovery_pending:
+            self._resume_source_totals(now)
+            if self._recovery_pending:
+                return
         self._roll_to(now)
 
     @callback
@@ -357,27 +510,40 @@ class EneaRcemRuntime:
     def _finalize_bucket(self, hour_key: str | None) -> None:
         if not hour_key:
             return
-
         imp = max(float(self._data.get("bucket_import", 0.0)), 0.0)
         exp = max(float(self._data.get("bucket_export", 0.0)), 0.0)
+        self._finalize_values(hour_key, imp, exp)
+
+    def _finalize_values(self, hour_key: str, imp: float, exp: float) -> None:
         balanced_import = max(imp - exp, 0.0)
         balanced_export = max(exp - imp, 0.0)
 
-        self._data["balanced_import_total"] = self.balanced_import_total + balanced_import
-        self._data["balanced_export_total"] = self.balanced_export_total + balanced_export
+        self._data["balanced_import_total"] = (
+            self.balanced_import_total + balanced_import
+        )
+        self._data["balanced_export_total"] = (
+            self.balanced_export_total + balanced_export
+        )
 
         month = hour_key[:7]
         monthly_import = dict(self._data.get("monthly_import", {}))
         monthly_export = dict(self._data.get("monthly_export", {}))
-        monthly_import[month] = float(monthly_import.get(month, 0.0)) + balanced_import
-        monthly_export[month] = float(monthly_export.get(month, 0.0)) + balanced_export
+        monthly_import[month] = (
+            float(monthly_import.get(month, 0.0)) + balanced_import
+        )
+        monthly_export[month] = (
+            float(monthly_export.get(month, 0.0)) + balanced_export
+        )
         self._data["monthly_import"] = monthly_import
         self._data["monthly_export"] = monthly_export
 
+        # Fixed charges accrue per calendar hour. Reconstructed historical hours
+        # therefore keep their share of monthly fixed fees after an HA outage.
         fixed_hour = self.fixed_monthly_gross / self._hours_in_month(hour_key)
         variable = balanced_import * self.variable_rate_gross
-        self._data["import_cost_total"] = self.import_cost_total + fixed_hour + variable
-        self._recalculate_compensation()
+        self._data["import_cost_total"] = (
+            self.import_cost_total + fixed_hour + variable
+        )
 
     def _hours_in_month(self, hour_key: str) -> float:
         year = int(hour_key[0:4])
@@ -388,7 +554,9 @@ class EneaRcemRuntime:
             end = datetime(year + 1, 1, 1, tzinfo=tz)
         else:
             end = datetime(year, month + 1, 1, tzinfo=tz)
-        return (end.astimezone(UTC) - start.astimezone(UTC)).total_seconds() / 3600.0
+        return (
+            end.astimezone(UTC) - start.astimezone(UTC)
+        ).total_seconds() / 3600.0
 
     @callback
     def _async_rcem_tick(self, _now: datetime) -> None:
