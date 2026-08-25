@@ -9,6 +9,7 @@ from .compensation import CompensationReconciler
 from .const import PLATFORMS
 from .deposit import DepositCoordinator
 from .runtime import EneaRcemRuntime
+from .settled_daily import SettledDailyCoordinator
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -22,11 +23,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     reconciler = CompensationReconciler(hass, entry, runtime)
     deposit = DepositCoordinator(hass, entry, runtime)
+    settled_daily = SettledDailyCoordinator(hass, entry, runtime)
     runtime.compensation_reconciler = reconciler
     runtime.deposit_coordinator = deposit
+    runtime.settled_daily_coordinator = settled_daily
 
     await reconciler.async_setup()
     await deposit.async_setup()
+    await settled_daily.async_setup()
     return True
 
 
@@ -34,6 +38,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         runtime: EneaRcemRuntime = entry.runtime_data
+
+        settled_daily: SettledDailyCoordinator | None = getattr(
+            runtime, "settled_daily_coordinator", None
+        )
+        if settled_daily is not None:
+            await settled_daily.async_shutdown()
 
         deposit: DepositCoordinator | None = getattr(
             runtime, "deposit_coordinator", None
