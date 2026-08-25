@@ -1,0 +1,77 @@
+name: Publish release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - custom_components/enea_rcem/manifest.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read and validate version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(
+              Path("custom_components/enea_rcem/manifest.json").read_text(encoding="utf-8")
+          )
+          print(manifest["version"])
+          PY
+          )"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid manifest version: $VERSION" >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Manifest version: $VERSION"
+
+      - name: Publish release when tag is new
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists; nothing to do."
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists without a release; publishing release from existing tag."
+            gh release create "$VERSION" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Enea RCEm $VERSION" \
+              --generate-notes \
+              --latest
+          else
+            echo "Creating tag and release $VERSION from commit $GITHUB_SHA."
+            gh release create "$VERSION" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Enea RCEm $VERSION" \
+              --generate-notes \
+              --latest
+          fi
