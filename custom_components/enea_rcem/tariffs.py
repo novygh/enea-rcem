@@ -206,6 +206,23 @@ def prosumer_factor_for_date(value: date) -> float:
 
 
 def prosumer_factor_for_month(month: str) -> float:
-    """Return the statutory deposit uplift factor for YYYY-MM."""
+    """Return the unambiguous statutory deposit factor overlapping YYYY-MM."""
     year_text, month_text = month.split("-", 1)
-    return prosumer_factor_for_date(date(int(year_text), int(month_text), 1))
+    year = int(year_text)
+    month_number = int(month_text)
+    month_start = date(year, month_number, 1)
+    if month_number == 12:
+        month_end = date(year + 1, 1, 1)
+    else:
+        month_end = date(year, month_number + 1, 1)
+
+    factors = {
+        factor
+        for start, end, factor in PROSUMER_FACTOR_PERIODS
+        if start < month_end and (end is None or end > month_start)
+    }
+    if len(factors) == 1:
+        return factors.pop()
+    if not factors:
+        raise ValueError(f"No prosumer factor configured for {month}")
+    raise ValueError(f"Multiple prosumer factors overlap {month}")
