@@ -130,6 +130,7 @@ SENSORS: tuple[EneaRcemSensorDescription, ...] = (
         key="balanced_import",
         translation_key="balanced_import",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_unit_of_measurement=UnitOfEnergy.MEGA_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
         suggested_display_precision=3,
@@ -143,6 +144,7 @@ SENSORS: tuple[EneaRcemSensorDescription, ...] = (
         key="balanced_export",
         translation_key="balanced_export",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_unit_of_measurement=UnitOfEnergy.MEGA_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
         suggested_display_precision=3,
@@ -260,19 +262,19 @@ class EneaRcemSensor(SensorEntity):
         )
 
     @property
-    def native_value(self) -> float | int | None:
-        """Return current value."""
+    def native_value(self):
+        """Return the sensor value."""
         return self.entity_description.value_fn(self.runtime)
 
     @property
     def extra_state_attributes(self) -> dict | None:
-        """Return extra attributes."""
+        """Return extra state attributes."""
         if self.entity_description.attrs_fn is None:
             return None
         return self.entity_description.attrs_fn(self.runtime)
 
     async def async_added_to_hass(self) -> None:
-        """Subscribe to runtime updates."""
+        """Register runtime updates."""
         await super().async_added_to_hass()
         self.async_on_remove(self.runtime.add_listener(self._handle_runtime_update))
 
