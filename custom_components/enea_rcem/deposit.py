@@ -63,7 +63,7 @@ class DepositSnapshot:
 
 @dataclass(slots=True)
 class SettledMonthSnapshot:
-    """Latest closed month for which PSE RCEm is available."""
+    """Latest closed month for which PSE RCEm and Recorder data are available."""
 
     month: str
     import_cost: float
@@ -356,7 +356,10 @@ class DepositCoordinator:
         )
         setattr(self.runtime, "deposit_snapshot", snapshot)
 
-        settled_month = self._latest_settled_month(current_month)
+        settled_month = self._latest_settled_month(
+            current_month,
+            set(import_costs) | set(compensation),
+        )
         if settled_month is None:
             setattr(self.runtime, "settled_month_snapshot", None)
         else:
@@ -374,10 +377,16 @@ class DepositCoordinator:
 
         self.runtime._notify()
 
-    def _latest_settled_month(self, current_month: str) -> str | None:
-        """Return newest closed month with an official RCEm publication."""
+    def _latest_settled_month(
+        self,
+        current_month: str,
+        available_months: set[str],
+    ) -> str | None:
+        """Return newest closed month with RCEm and Recorder billing data."""
         candidates = [
-            month for month in self.runtime.rcem_prices if month < current_month
+            month
+            for month in available_months
+            if month < current_month and month in self.runtime.rcem_prices
         ]
         return max(candidates) if candidates else None
 
