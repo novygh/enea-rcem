@@ -1,0 +1,37 @@
+"""Constants for Enea RCEm."""
+
+from __future__ import annotations
+
+DOMAIN = "enea_rcem"
+PLATFORMS = ["sensor"]
+
+CONF_IMPORT_ENTITY = "import_entity"
+CONF_EXPORT_ENTITY = "export_entity"
+CONF_ENERGY_PRICE_NET = "energy_price_net"
+CONF_COMMERCIAL_FEE_NET = "commercial_fee_net"
+CONF_VARIABLE_NETWORK_NET = "variable_network_net"
+CONF_QUALITY_NET = "quality_net"
+CONF_OZE_NET = "oze_net"
+CONF_COGENERATION_NET = "cogeneration_net"
+CONF_FIXED_NETWORK_NET = "fixed_network_net"
+CONF_CAPACITY_FEE_NET = "capacity_fee_net"
+CONF_SUBSCRIPTION_FEE_NET = "subscription_fee_net"
+CONF_TRANSITION_FEE_NET = "transition_fee_net"
+CONF_VAT_RATE = "vat_rate"
+
+DEFAULT_ENERGY_PRICE_NET = 0.4879
+DEFAULT_COMMERCIAL_FEE_NET = 10.24
+DEFAULT_VARIABLE_NETWORK_NET = 0.2456
+DEFAULT_QUALITY_NET = 0.0332
+DEFAULT_OZE_NET = 0.0073
+DEFAULT_COGENERATION_NET = 0.0030
+DEFAULT_FIXED_NETWORK_NET = 10.41
+DEFAULT_CAPACITY_FEE_NET = 24.05
+DEFAULT_SUBSCRIPTION_FEE_NET = 0.32
+DEFAULT_TRANSITION_FEE_NET = 0.0
+DEFAULT_VAT_RATE = 23.0
+
+PROSUMER_DEPOSIT_FACTOR = 1.23
+RCEM_URL = "https://www.pse.pl/oire/rcem-rynkowa-miesieczna-cena-energii-elektrycznej"
+RCEM_REFRESH_HOURS = 6
+STORAGE_VERSION = 1
