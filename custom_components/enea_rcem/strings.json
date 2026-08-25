@@ -1,0 +1,68 @@
+{
+  "title": "Enea RCEm",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Energy sources",
+        "description": "Select cumulative grid import and export energy sensors.",
+        "data": {
+          "import_entity": "Grid import energy",
+          "export_entity": "Grid export energy"
+        }
+      },
+      "rates": {
+        "title": "Billing rates",
+        "description": "Net values. Distribution defaults match Enea Operator G11 in 2026; verify your energy price and commercial fee on your invoice.",
+        "data": {
+          "energy_price_net": "Active energy net [PLN/kWh]",
+          "commercial_fee_net": "Commercial fee net [PLN/month]",
+          "variable_network_net": "Variable network fee net [PLN/kWh]",
+          "quality_net": "Quality fee net [PLN/kWh]",
+          "oze_net": "RES fee net [PLN/kWh]",
+          "cogeneration_net": "Cogeneration fee net [PLN/kWh]",
+          "fixed_network_net": "Fixed network fee net [PLN/month]",
+          "capacity_fee_net": "Capacity fee net [PLN/month]",
+          "subscription_fee_net": "Subscription fee net [PLN/month]",
+          "transition_fee_net": "Transition fee net [PLN/month]",
+          "vat_rate": "VAT [%]"
+        }
+      }
+    },
+    "error": {
+      "same_entity": "Import and export must use different entities."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Current billing rates",
+        "description": "Changes apply from the moment you save them. Versioned rate history is planned for a later release.",
+        "data": {
+          "energy_price_net": "Active energy net [PLN/kWh]",
+          "commercial_fee_net": "Commercial fee net [PLN/month]",
+          "variable_network_net": "Variable network fee net [PLN/kWh]",
+          "quality_net": "Quality fee net [PLN/kWh]",
+          "oze_net": "RES fee net [PLN/kWh]",
+          "cogeneration_net": "Cogeneration fee net [PLN/kWh]",
+          "fixed_network_net": "Fixed network fee net [PLN/month]",
+          "capacity_fee_net": "Capacity fee net [PLN/month]",
+          "subscription_fee_net": "Subscription fee net [PLN/month]",
+          "transition_fee_net": "Transition fee net [PLN/month]",
+          "vat_rate": "VAT [%]"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "rcem": {"name": "PSE RCEm"},
+      "rcem_prosumer": {"name": "PSE RCEm Prosumer"},
+      "balanced_import": {"name": "Hourly-balanced import"},
+      "balanced_export": {"name": "Hourly-balanced export"},
+      "import_cost": {"name": "Import cost"},
+      "export_compensation": {"name": "Export compensation"},
+      "current_month_export_estimate": {"name": "Current month estimated export compensation"},
+      "data_gaps": {"name": "Data gaps"}
+    }
+  }
+}
