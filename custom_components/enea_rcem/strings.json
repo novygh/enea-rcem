@@ -11,9 +11,11 @@
         }
       },
       "rates": {
-        "title": "Billing rates",
-        "description": "Net values. Distribution defaults match Enea Operator G11 in 2026; verify your energy price and commercial fee on your invoice.",
+        "title": "Billing rates and meter corrections",
+        "description": "Corrections are applied independently after hourly net balancing. Positive values increase the result, negative values decrease it. Net billing values follow below.",
         "data": {
+          "import_correction_percent": "Import correction after balancing [%]",
+          "export_correction_percent": "Export correction after balancing [%]",
           "energy_price_net": "Active energy net [PLN/kWh]",
           "commercial_fee_net": "Commercial fee net [PLN/month]",
           "variable_network_net": "Variable network fee net [PLN/kWh]",
@@ -35,9 +37,11 @@
   "options": {
     "step": {
       "init": {
-        "title": "Current billing rates",
-        "description": "Changes apply from the moment you save them. Versioned rate history is planned for a later release.",
+        "title": "Current billing rates and meter corrections",
+        "description": "Meter corrections apply independently after hourly net balancing and only to newly finalized hours after saving. Positive values increase the result; negative values decrease it.",
         "data": {
+          "import_correction_percent": "Import correction after balancing [%]",
+          "export_correction_percent": "Export correction after balancing [%]",
           "energy_price_net": "Active energy net [PLN/kWh]",
           "commercial_fee_net": "Commercial fee net [PLN/month]",
           "variable_network_net": "Variable network fee net [PLN/kWh]",
