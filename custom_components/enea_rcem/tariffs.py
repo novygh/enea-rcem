@@ -1,11 +1,11 @@
 """Versioned Enea G11 tariff history used by historical billing.
 
 The values below are based on the user's Enea invoices covering
-2024-06-12..2025-05-31 and 2025-06-01..2026-05-31.  They are deliberately
+2024-06-12..2025-05-31 and 2025-06-01..2026-05-31. They are deliberately
 kept separate from the editable current-rate options used by the live runtime.
 
 Historical backfill must select the period that was valid at the timestamp
-being reconstructed.  Do not use today's tariff to recalculate older energy.
+being reconstructed. Do not use today's tariff to recalculate older energy.
 """
 
 from __future__ import annotations
@@ -159,14 +159,24 @@ HISTORICAL_TARIFFS: tuple[TariffPeriod, ...] = (
 )
 
 
-# June 2024 is a special partial billing month.  Enea prorated the network,
+# June 2024 is a special partial billing month. Enea prorated the network,
 # transition and capacity charges to 19/30 of the month, but charged the
-# subscription fee and the first commercial fee in full.  Historical billing
+# subscription fee and the first commercial fee in full. Historical billing
 # must therefore use the invoice total below instead of simply multiplying the
 # nominal monthly fixed-rate sum by the elapsed fraction of June.
 HISTORICAL_FIXED_NET_OVERRIDES: dict[str, float] = {
     "2024-06": 6.42 + 0.21 + 9.44 + 0.32 + 14.31,
 }
+
+
+# The 1.23 prosumer-deposit uplift entered into force for settlements from
+# 2025-02-01. Earlier RCEm months use factor 1.00. This is intentionally
+# versioned separately from RCEm itself because PSE publishes the market price,
+# while the uplift is a statutory settlement rule applied by the seller.
+PROSUMER_FACTOR_PERIODS: tuple[tuple[date, date | None, float], ...] = (
+    (date(2024, 6, 12), date(2025, 2, 1), 1.00),
+    (date(2025, 2, 1), None, 1.23),
+)
 
 
 def tariff_for_date(value: date) -> TariffPeriod | None:
@@ -185,3 +195,17 @@ def tariff_for_datetime(value: datetime) -> TariffPeriod | None:
 def fixed_invoice_net_override(month: str) -> float | None:
     """Return a verified invoice fixed-charge override for YYYY-MM, if any."""
     return HISTORICAL_FIXED_NET_OVERRIDES.get(month)
+
+
+def prosumer_factor_for_date(value: date) -> float:
+    """Return the statutory deposit uplift factor valid for a local date."""
+    for start, end, factor in PROSUMER_FACTOR_PERIODS:
+        if value >= start and (end is None or value < end):
+            return factor
+    raise ValueError(f"No prosumer factor configured for {value.isoformat()}")
+
+
+def prosumer_factor_for_month(month: str) -> float:
+    """Return the statutory deposit uplift factor for YYYY-MM."""
+    year_text, month_text = month.split("-", 1)
+    return prosumer_factor_for_date(date(int(year_text), int(month_text), 1))
