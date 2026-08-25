@@ -51,12 +51,32 @@ def _import_cost_attrs(runtime: EneaRcemRuntime) -> dict:
 
 
 def _comp_attrs(runtime: EneaRcemRuntime) -> dict:
-    return {
+    attrs = {
         "settled_months": sorted(runtime._data.get("monthly_compensation", {})),
         "export_correction_percent": runtime.export_correction_percent,
         "data_gap_count": runtime.gap_count,
         "prosumer_factor": PROSUMER_DEPOSIT_FACTOR,
     }
+    snapshot = getattr(runtime, "settled_month_snapshot", None)
+    if snapshot is None:
+        attrs.update(
+            {
+                "last_settled_month": None,
+                "last_settled_import_cost_pln": None,
+                "last_settled_export_compensation_pln": None,
+            }
+        )
+    else:
+        attrs.update(
+            {
+                "last_settled_month": snapshot.month,
+                "last_settled_import_cost_pln": round(snapshot.import_cost, 2),
+                "last_settled_export_compensation_pln": round(
+                    snapshot.export_compensation, 2
+                ),
+            }
+        )
+    return attrs
 
 
 def _deposit_snapshot(runtime: EneaRcemRuntime):
