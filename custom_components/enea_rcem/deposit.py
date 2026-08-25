@@ -252,7 +252,11 @@ class DepositCoordinator:
                 second=0,
             )
         )
-        await self.async_refresh()
+        self.entry.async_create_background_task(
+            self.hass,
+            self.async_refresh(),
+            "Enea RCEm deposit reconstruction",
+        )
 
     async def async_shutdown(self) -> None:
         """Stop scheduled refreshes."""
