@@ -160,6 +160,13 @@ class EneaRcemRuntime:
         now = dt_util.now()
         hour = self._hour_key(now)
         self._data = stored if stored else self._fresh_data(hour)
+
+        # Storage written by releases before 0.1.3 did not distinguish a
+        # complete hourly bucket from the partial hour in which the integration
+        # was first loaded. Treat such an in-progress bucket as incomplete so it
+        # can never be billed as a full Enea balancing hour.
+        self._data.setdefault("bucket_valid", False)
+
         self._load_cached_rcem()
         self._resume_source_totals(now)
 
@@ -189,6 +196,7 @@ class EneaRcemRuntime:
     def _fresh_data(self, hour: str) -> dict[str, Any]:
         return {
             "bucket_hour": hour,
+            "bucket_valid": False,
             "bucket_import": 0.0,
             "bucket_export": 0.0,
             "last_import_total": None,
@@ -254,12 +262,18 @@ class EneaRcemRuntime:
         export_now = _number(self.hass.states.get(self.export_entity))
 
         if stored_hour != current_hour:
-            self._finalize_bucket(stored_hour)
+            # Home Assistant was not continuously observing the whole stored
+            # balancing hour, so its import/export split cannot be reconstructed
+            # safely. Discard that incomplete bucket instead of guessing.
+            if self._data.get("bucket_valid") and (
+                import_now is not None or export_now is not None
+            ):
+                self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
+
             self._data["bucket_hour"] = current_hour
+            self._data["bucket_valid"] = False
             self._data["bucket_import"] = 0.0
             self._data["bucket_export"] = 0.0
-            if import_now is not None or export_now is not None:
-                self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
             self._data["last_import_total"] = import_now
             self._data["last_export_total"] = export_now
             return
@@ -278,6 +292,7 @@ class EneaRcemRuntime:
                 self._data[f"bucket_{kind}"] = float(self._data.get(f"bucket_{kind}", 0.0)) + delta
             elif abs(delta) > 1e-9:
                 self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
+                self._data["bucket_valid"] = False
         self._data[key] = current
 
     @callback
@@ -307,6 +322,7 @@ class EneaRcemRuntime:
                 kind, float(previous), value,
             )
             self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
+            self._data["bucket_valid"] = False
         elif delta > 0:
             self._data[f"bucket_{kind}"] = float(self._data.get(f"bucket_{kind}", 0.0)) + delta
 
@@ -324,8 +340,15 @@ class EneaRcemRuntime:
         if current == target:
             return
 
-        self._finalize_bucket(current)
+        if self._data.get("bucket_valid"):
+            self._finalize_bucket(current)
+        else:
+            _LOGGER.debug("Discarding incomplete hourly bucket %s", current)
+
         self._data["bucket_hour"] = target
+        # Once Home Assistant crosses an hour boundary while this runtime is
+        # active, the new bucket starts at the real boundary and is complete.
+        self._data["bucket_valid"] = True
         self._data["bucket_import"] = 0.0
         self._data["bucket_export"] = 0.0
         self._schedule_save()
