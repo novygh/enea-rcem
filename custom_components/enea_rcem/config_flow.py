@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import voluptuous as vol
 
@@ -40,7 +40,16 @@ from .const import (
 )
 
 
-def _number(default: float, step: float = 0.0001) -> selector.NumberSelector:
+def _number(
+    default: float,
+    step: float | Literal["any"] = "any",
+) -> selector.NumberSelector:
+    """Return a box number selector.
+
+    Home Assistant currently requires numeric selector steps to be >= 0.001.
+    Energy tariffs need four decimal places, so use step='any' for those fields;
+    the box selector still validates the entered value as a float.
+    """
     return selector.NumberSelector(
         selector.NumberSelectorConfig(
             min=0,
