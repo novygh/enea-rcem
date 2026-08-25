@@ -1,0 +1,68 @@
+{
+  "title": "Enea RCEm",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Źródła energii",
+        "description": "Wybierz narastające liczniki energii pobranej i oddanej do sieci.",
+        "data": {
+          "import_entity": "Energia pobrana z sieci",
+          "export_entity": "Energia oddana do sieci"
+        }
+      },
+      "rates": {
+        "title": "Stawki rozliczeniowe",
+        "description": "Wartości netto. Domyślne stawki dystrybucyjne odpowiadają Enea Operator G11 w 2026 r.; cenę energii i opłatę handlową sprawdź na swojej fakturze.",
+        "data": {
+          "energy_price_net": "Energia czynna netto [PLN/kWh]",
+          "commercial_fee_net": "Opłata handlowa netto [PLN/mies.]",
+          "variable_network_net": "Sieciowa zmienna netto [PLN/kWh]",
+          "quality_net": "Jakościowa netto [PLN/kWh]",
+          "oze_net": "OZE netto [PLN/kWh]",
+          "cogeneration_net": "Kogeneracyjna netto [PLN/kWh]",
+          "fixed_network_net": "Sieciowa stała netto [PLN/mies.]",
+          "capacity_fee_net": "Mocowa netto [PLN/mies.]",
+          "subscription_fee_net": "Abonamentowa netto [PLN/mies.]",
+          "transition_fee_net": "Przejściowa netto [PLN/mies.]",
+          "vat_rate": "VAT [%]"
+        }
+      }
+    },
+    "error": {
+      "same_entity": "Import i eksport muszą wskazywać różne encje."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Aktualne stawki rozliczeniowe",
+        "description": "Zmiana działa od chwili zapisania. Wersjonowana historia stawek zostanie dodana w kolejnej wersji.",
+        "data": {
+          "energy_price_net": "Energia czynna netto [PLN/kWh]",
+          "commercial_fee_net": "Opłata handlowa netto [PLN/mies.]",
+          "variable_network_net": "Sieciowa zmienna netto [PLN/kWh]",
+          "quality_net": "Jakościowa netto [PLN/kWh]",
+          "oze_net": "OZE netto [PLN/kWh]",
+          "cogeneration_net": "Kogeneracyjna netto [PLN/kWh]",
+          "fixed_network_net": "Sieciowa stała netto [PLN/mies.]",
+          "capacity_fee_net": "Mocowa netto [PLN/mies.]",
+          "subscription_fee_net": "Abonamentowa netto [PLN/mies.]",
+          "transition_fee_net": "Przejściowa netto [PLN/mies.]",
+          "vat_rate": "VAT [%]"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "rcem": {"name": "PSE RCEm"},
+      "rcem_prosumer": {"name": "PSE RCEm Prosument"},
+      "balanced_import": {"name": "Import zbilansowany"},
+      "balanced_export": {"name": "Eksport zbilansowany"},
+      "import_cost": {"name": "Koszt importu"},
+      "export_compensation": {"name": "Rekompensata eksportu"},
+      "current_month_export_estimate": {"name": "Szacowana rekompensata bieżącego miesiąca"},
+      "data_gaps": {"name": "Luki danych"}
+    }
+  }
+}
