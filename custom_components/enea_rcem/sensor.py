@@ -16,6 +16,7 @@ from homeassistant.const import EntityCategory, UnitOfEnergy
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, PROSUMER_DEPOSIT_FACTOR
 from .runtime import EneaRcemRuntime
@@ -93,6 +94,50 @@ def _comp_attrs(runtime: EneaRcemRuntime) -> dict:
         attrs["last_settled_daily_month"] = daily_snapshot.month
 
     return attrs
+
+
+def _current_month_energy_values(
+    runtime: EneaRcemRuntime,
+) -> tuple[str, float, float]:
+    month = dt_util.now().strftime("%Y-%m")
+    import_kwh = float(runtime._data.get("monthly_import", {}).get(month, 0.0))
+    export_kwh = float(runtime._data.get("monthly_export", {}).get(month, 0.0))
+    return month, import_kwh, export_kwh
+
+
+def _current_month_energy_balance(runtime: EneaRcemRuntime) -> float:
+    _month, import_kwh, export_kwh = _current_month_energy_values(runtime)
+    return import_kwh - export_kwh
+
+
+def _current_month_energy_balance_attrs(runtime: EneaRcemRuntime) -> dict:
+    month, import_kwh, export_kwh = _current_month_energy_values(runtime)
+    return {
+        "month": month,
+        "import_kwh": round(import_kwh, 4),
+        "export_kwh": round(export_kwh, 4),
+        "calculation": "import_minus_export",
+    }
+
+
+def _settled_month_balance(runtime: EneaRcemRuntime) -> float | None:
+    snapshot = getattr(runtime, "settled_month_snapshot", None)
+    if snapshot is None:
+        return None
+    return float(snapshot.import_cost) - float(snapshot.export_compensation)
+
+
+def _settled_month_balance_attrs(runtime: EneaRcemRuntime) -> dict:
+    snapshot = getattr(runtime, "settled_month_snapshot", None)
+    if snapshot is None:
+        return {"ready": False, "month": None}
+    return {
+        "ready": True,
+        "month": snapshot.month,
+        "import_cost_pln": round(snapshot.import_cost, 2),
+        "export_compensation_pln": round(snapshot.export_compensation, 2),
+        "calculation": "import_cost_minus_export_compensation",
+    }
 
 
 def _deposit_snapshot(runtime: EneaRcemRuntime):
@@ -191,6 +236,15 @@ SENSORS: tuple[EneaRcemSensorDescription, ...] = (
         },
     ),
     EneaRcemSensorDescription(
+        key="current_month_energy_balance",
+        translation_key="current_month_energy_balance",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=2,
+        icon="mdi:scale-balance",
+        value_fn=_current_month_energy_balance,
+        attrs_fn=_current_month_energy_balance_attrs,
+    ),
+    EneaRcemSensorDescription(
         key="import_cost",
         translation_key="import_cost",
         native_unit_of_measurement="PLN",
@@ -207,6 +261,15 @@ SENSORS: tuple[EneaRcemSensorDescription, ...] = (
         suggested_display_precision=2,
         value_fn=lambda r: r.export_compensation_total,
         attrs_fn=_comp_attrs,
+    ),
+    EneaRcemSensorDescription(
+        key="settled_month_financial_balance",
+        translation_key="settled_month_financial_balance",
+        native_unit_of_measurement="PLN",
+        suggested_display_precision=2,
+        icon="mdi:cash-sync",
+        value_fn=_settled_month_balance,
+        attrs_fn=_settled_month_balance_attrs,
     ),
     EneaRcemSensorDescription(
         key="current_month_export_estimate",
