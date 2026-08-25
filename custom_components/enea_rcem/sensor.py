@@ -76,6 +76,22 @@ def _comp_attrs(runtime: EneaRcemRuntime) -> dict:
                 ),
             }
         )
+
+    daily_snapshot = getattr(runtime, "settled_daily_snapshot", None)
+    if daily_snapshot is None:
+        attrs["last_settled_daily"] = []
+    else:
+        attrs["last_settled_daily"] = [
+            {
+                "date": point.date,
+                "import_cost_pln": round(point.import_cost, 4),
+                "export_compensation_pln": round(point.export_compensation, 4),
+                "export_kwh": round(point.export_kwh, 4),
+            }
+            for point in daily_snapshot.points
+        ]
+        attrs["last_settled_daily_month"] = daily_snapshot.month
+
     return attrs
 
 
