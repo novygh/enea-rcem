@@ -59,6 +59,50 @@ def _comp_attrs(runtime: EneaRcemRuntime) -> dict:
     }
 
 
+def _deposit_snapshot(runtime: EneaRcemRuntime):
+    return getattr(runtime, "deposit_snapshot", None)
+
+
+def _deposit_value(runtime: EneaRcemRuntime, key: str) -> float | None:
+    snapshot = _deposit_snapshot(runtime)
+    if snapshot is None:
+        return None
+    return float(getattr(snapshot, key))
+
+
+def _deposit_attrs(runtime: EneaRcemRuntime) -> dict:
+    snapshot = _deposit_snapshot(runtime)
+    if snapshot is None:
+        return {"ready": False}
+    return {
+        "ready": True,
+        "assigned_current_month_pln": round(snapshot.assigned_current_month, 2),
+        "used_current_month_pln": round(snapshot.used_current_month, 2),
+        "active_energy_purchase_current_month_pln": round(
+            snapshot.active_energy_purchase_current_month, 2
+        ),
+        "active_energy_due_current_month_pln": round(
+            snapshot.active_energy_due_current_month, 2
+        ),
+        "total_used_pln": round(snapshot.total_used, 2),
+        "total_refund_pln": round(snapshot.total_refund, 2),
+        "total_expired_pln": round(snapshot.total_expired, 2),
+        "oldest_source_month": snapshot.oldest_source_month,
+        "oldest_assigned_month": snapshot.oldest_assigned_month,
+        "oldest_expiry_month": snapshot.oldest_expiry_month,
+        "oldest_remaining_pln": (
+            round(snapshot.oldest_remaining, 2)
+            if snapshot.oldest_remaining is not None
+            else None
+        ),
+        "oldest_max_refund_pln": (
+            round(snapshot.oldest_max_refund, 2)
+            if snapshot.oldest_max_refund is not None
+            else None
+        ),
+    }
+
+
 SENSORS: tuple[EneaRcemSensorDescription, ...] = (
     EneaRcemSensorDescription(
         key="rcem",
@@ -141,6 +185,43 @@ SENSORS: tuple[EneaRcemSensorDescription, ...] = (
             "price_basis_month": r.latest_rcem.month if r.latest_rcem else None,
             "estimated": True,
         },
+    ),
+    EneaRcemSensorDescription(
+        key="deposit_balance",
+        translation_key="deposit_balance",
+        native_unit_of_measurement="PLN",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda r: _deposit_value(r, "balance"),
+        attrs_fn=_deposit_attrs,
+    ),
+    EneaRcemSensorDescription(
+        key="deposit_assigned_current_month",
+        translation_key="deposit_assigned_current_month",
+        native_unit_of_measurement="PLN",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda r: _deposit_value(r, "assigned_current_month"),
+    ),
+    EneaRcemSensorDescription(
+        key="deposit_used_current_month",
+        translation_key="deposit_used_current_month",
+        native_unit_of_measurement="PLN",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda r: _deposit_value(r, "used_current_month"),
+    ),
+    EneaRcemSensorDescription(
+        key="active_energy_due_current_month",
+        translation_key="active_energy_due_current_month",
+        native_unit_of_measurement="PLN",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda r: _deposit_value(r, "active_energy_due_current_month"),
     ),
     EneaRcemSensorDescription(
         key="data_gaps",
