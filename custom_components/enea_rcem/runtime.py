@@ -390,25 +390,37 @@ class EneaRcemRuntime:
         self._data["last_export_total"] = export_now
         self._data["last_import_time"] = now.isoformat()
         self._data["last_export_time"] = now.isoformat()
-        self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
 
-        if import_problem or export_problem:
+        recovery_problem = import_problem or export_problem
+        if recovery_problem:
+            self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
             _LOGGER.warning(
                 "One or more source meter baselines were missing or decreased "
                 "across restart; preserved the trustworthy positive delta from "
                 "the other source and rebased the affected meter"
             )
+            _LOGGER.warning(
+                "Recovered restart interval from %s to %s across %d hour buckets; "
+                "distributed %.6f kWh import and %.6f kWh export by elapsed time, "
+                "but at least one source baseline was not trustworthy",
+                stored_hour,
+                current_hour,
+                len(hour_keys),
+                delta_import,
+                delta_export,
+            )
+        else:
+            _LOGGER.info(
+                "Recovered cumulative meter delta across restart from %s to %s "
+                "across %d hour buckets; distributed %.6f kWh import and %.6f kWh "
+                "export by elapsed time without counting a data gap",
+                stored_hour,
+                current_hour,
+                len(hour_keys),
+                delta_import,
+                delta_export,
+            )
 
-        _LOGGER.warning(
-            "Reconstructed Home Assistant data gap from %s to %s across %d "
-            "hour buckets; distributed %.6f kWh import and %.6f kWh export "
-            "by elapsed time",
-            stored_hour,
-            current_hour,
-            len(hour_keys),
-            delta_import,
-            delta_export,
-        )
         self._recalculate_compensation()
         self._save_now()
         self._notify()
