@@ -66,6 +66,10 @@
       "import_cost": {"name": "Koszt importu"},
       "export_compensation": {"name": "Rekompensata eksportu"},
       "current_month_export_estimate": {"name": "Szacowana rekompensata bieżącego miesiąca"},
+      "deposit_balance": {"name": "Saldo depozytu prosumenckiego"},
+      "deposit_assigned_current_month": {"name": "Depozyt przypisany w tym miesiącu"},
+      "deposit_used_current_month": {"name": "Depozyt wykorzystany w tym miesiącu"},
+      "active_energy_due_current_month": {"name": "Energia czynna do zapłaty w tym miesiącu"},
       "data_gaps": {"name": "Luki danych"}
     }
   }
