@@ -11,9 +11,11 @@
         }
       },
       "rates": {
-        "title": "Stawki rozliczeniowe",
-        "description": "Wartości netto. Domyślne stawki dystrybucyjne odpowiadają Enea Operator G11 w 2026 r.; cenę energii i opłatę handlową sprawdź na swojej fakturze.",
+        "title": "Stawki rozliczeniowe i korekty licznika",
+        "description": "Korekty są stosowane niezależnie po bilansowaniu godzinowym. Wartość dodatnia zwiększa wynik, ujemna go zmniejsza. Poniżej podaj stawki netto.",
         "data": {
+          "import_correction_percent": "Korekta importu po bilansowaniu [%]",
+          "export_correction_percent": "Korekta eksportu po bilansowaniu [%]",
           "energy_price_net": "Energia czynna netto [PLN/kWh]",
           "commercial_fee_net": "Opłata handlowa netto [PLN/mies.]",
           "variable_network_net": "Sieciowa zmienna netto [PLN/kWh]",
@@ -35,9 +37,11 @@
   "options": {
     "step": {
       "init": {
-        "title": "Aktualne stawki rozliczeniowe",
-        "description": "Zmiana działa od chwili zapisania. Wersjonowana historia stawek zostanie dodana w kolejnej wersji.",
+        "title": "Aktualne stawki i korekty licznika",
+        "description": "Korekty działają niezależnie po bilansowaniu godzinowym i dotyczą godzin zamkniętych po zapisaniu ustawień. Wartość dodatnia zwiększa wynik, ujemna go zmniejsza.",
         "data": {
+          "import_correction_percent": "Korekta importu po bilansowaniu [%]",
+          "export_correction_percent": "Korekta eksportu po bilansowaniu [%]",
           "energy_price_net": "Energia czynna netto [PLN/kWh]",
           "commercial_fee_net": "Opłata handlowa netto [PLN/mies.]",
           "variable_network_net": "Sieciowa zmienna netto [PLN/kWh]",
