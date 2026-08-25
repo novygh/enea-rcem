@@ -148,6 +148,9 @@ class CompensationReconciler:
         self._running = True
         try:
             await self._async_reconcile_once()
+            deposit = getattr(self.runtime, "deposit_coordinator", None)
+            if deposit is not None:
+                await deposit.async_refresh()
         except Exception:  # noqa: BLE001 - reconciliation must never break integration
             _LOGGER.exception("RCEm compensation reconciliation failed")
             self._schedule_reconcile(_RETRY_DELAY)
