@@ -65,12 +65,12 @@ def _number(
 
 
 def _correction_number() -> selector.NumberSelector:
-    """Return a signed percentage correction selector."""
+    """Return a signed percentage correction selector with free precision."""
     return selector.NumberSelector(
         selector.NumberSelectorConfig(
             min=-100,
             max=100,
-            step=0.01,
+            step="any",
             mode=selector.NumberSelectorMode.BOX,
         )
     )
