@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import logging
 from typing import Any
 
@@ -207,7 +207,7 @@ class SettledDailyCoordinator:
                     export_kwh=export_kwh,
                 )
             )
-            day = day.replace(day=day.day) + dt_util.dt.timedelta(days=1)
+            day += timedelta(days=1)
 
         setattr(
             self.runtime,
