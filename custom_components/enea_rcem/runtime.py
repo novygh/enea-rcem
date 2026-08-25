@@ -171,6 +171,10 @@ class EneaRcemRuntime:
         # complete hourly bucket from the partial hour in which the integration
         # was first loaded.
         self._data.setdefault("bucket_valid", False)
+        # Releases before 0.1.6 did not persist the timestamp belonging to each
+        # physical meter baseline. They are seeded during setup below.
+        self._data.setdefault("last_import_time", None)
+        self._data.setdefault("last_export_time", None)
 
         self._load_cached_rcem()
         self._resume_source_totals(now)
@@ -196,7 +200,10 @@ class EneaRcemRuntime:
         )
 
         await self.async_refresh_rcem()
-        self._schedule_save()
+        # Seed a durable snapshot immediately. Source meters can update more
+        # often than the delayed Store debounce interval, so relying only on a
+        # delayed save can leave the on-disk snapshot stale for a long time.
+        await self._store.async_save(self._serialize())
 
     async def async_shutdown(self) -> None:
         for unsub in self._unsubs:
@@ -212,6 +219,8 @@ class EneaRcemRuntime:
             "bucket_export": 0.0,
             "last_import_total": None,
             "last_export_total": None,
+            "last_import_time": None,
+            "last_export_time": None,
             "balanced_import_total": 0.0,
             "balanced_export_total": 0.0,
             "import_cost_total": 0.0,
@@ -250,6 +259,11 @@ class EneaRcemRuntime:
         self._store.async_delay_save(self._serialize, 30)
 
     @callback
+    def _save_now(self) -> None:
+        """Persist an important state transition without debounce."""
+        self.hass.async_create_task(self._store.async_save(self._serialize()))
+
+    @callback
     def add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
         self._listeners.append(listener)
 
@@ -277,6 +291,7 @@ class EneaRcemRuntime:
 
         if stored_hour != current_hour:
             if self._recover_gap(
+                now=now,
                 current_hour=current_hour,
                 import_now=import_now,
                 export_now=export_now,
@@ -297,12 +312,13 @@ class EneaRcemRuntime:
             return
 
         self._recovery_pending = False
-        self._resume_one("import", import_now)
-        self._resume_one("export", export_now)
+        self._resume_one("import", import_now, now)
+        self._resume_one("export", export_now, now)
 
     def _recover_gap(
         self,
         *,
+        now: datetime,
         current_hour: str,
         import_now: float | None,
         export_now: float | None,
@@ -313,56 +329,35 @@ class EneaRcemRuntime:
         if import_now is None or export_now is None:
             return False
 
-        previous_import = self._data.get("last_import_total")
-        previous_export = self._data.get("last_export_total")
-        if previous_import is None or previous_export is None:
-            # There is no trustworthy baseline to reconstruct from. Rebase
-            # without inventing energy, but keep the gap visible.
-            self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
-            self._data["bucket_hour"] = current_hour
-            self._data["bucket_valid"] = False
-            self._data["bucket_import"] = 0.0
-            self._data["bucket_export"] = 0.0
-            self._data["last_import_total"] = import_now
-            self._data["last_export_total"] = export_now
-            return True
-
-        delta_import = import_now - float(previous_import)
-        delta_export = export_now - float(previous_export)
-        if delta_import < -1e-9 or delta_export < -1e-9:
-            _LOGGER.warning(
-                "Source meter decreased across restart; rebasing without "
-                "reconstructing the missing interval"
-            )
-            self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
-            self._data["bucket_hour"] = current_hour
-            self._data["bucket_valid"] = False
-            self._data["bucket_import"] = 0.0
-            self._data["bucket_export"] = 0.0
-            self._data["last_import_total"] = import_now
-            self._data["last_export_total"] = export_now
-            return True
-
         hour_keys = self._hour_keys(stored_hour, current_hour)
         if not hour_keys:
             return False
 
-        # The meters preserve cumulative totals while Home Assistant is down.
-        # Split only the unobserved increase equally across every affected hour.
-        # Any energy already observed before shutdown remains in the old bucket.
-        share_import = max(delta_import, 0.0) / len(hour_keys)
-        share_export = max(delta_export, 0.0) / len(hour_keys)
+        fallback_start = dt_util.parse_datetime(stored_hour)
+        if fallback_start is None or fallback_start.tzinfo is None:
+            return False
+
+        delta_import, import_problem = self._recovery_delta(
+            "import", import_now, self._data.get("last_import_total")
+        )
+        delta_export, export_problem = self._recovery_delta(
+            "export", export_now, self._data.get("last_export_total")
+        )
+
+        import_start = self._baseline_time("import", fallback_start)
+        export_start = self._baseline_time("export", fallback_start)
+        import_parts = self._distribute_delta(delta_import, import_start, now)
+        export_parts = self._distribute_delta(delta_export, export_start, now)
 
         old_import = max(float(self._data.get("bucket_import", 0.0)), 0.0)
         old_export = max(float(self._data.get("bucket_export", 0.0)), 0.0)
 
         for index, hour_key in enumerate(hour_keys):
+            imp = import_parts.get(hour_key, 0.0)
+            exp = export_parts.get(hour_key, 0.0)
             if index == 0:
-                imp = old_import + share_import
-                exp = old_export + share_export
-            else:
-                imp = share_import
-                exp = share_export
+                imp += old_import
+                exp += old_export
 
             if hour_key == current_hour:
                 self._data["bucket_hour"] = current_hour
@@ -372,27 +367,112 @@ class EneaRcemRuntime:
                 break
 
             # A reconstructed historical hour is deliberately approximate, but
-            # preserving cumulative kWh is preferable to dropping energy.
+            # preserving every trustworthy positive meter delta is preferable
+            # to dropping energy.
             self._finalize_values(hour_key, imp, exp)
 
         self._data["last_import_total"] = import_now
         self._data["last_export_total"] = export_now
+        self._data["last_import_time"] = now.isoformat()
+        self._data["last_export_time"] = now.isoformat()
         self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
+
+        if import_problem or export_problem:
+            _LOGGER.warning(
+                "One or more source meter baselines were missing or decreased "
+                "across restart; preserved the trustworthy positive delta from "
+                "the other source and rebased the affected meter"
+            )
 
         _LOGGER.warning(
             "Reconstructed Home Assistant data gap from %s to %s across %d "
             "hour buckets; distributed %.6f kWh import and %.6f kWh export "
-            "equally",
+            "by elapsed time",
             stored_hour,
             current_hour,
             len(hour_keys),
-            max(delta_import, 0.0),
-            max(delta_export, 0.0),
+            delta_import,
+            delta_export,
         )
         self._recalculate_compensation()
-        self._schedule_save()
+        self._save_now()
         self._notify()
         return True
+
+    def _recovery_delta(
+        self,
+        kind: str,
+        current: float,
+        previous: Any,
+    ) -> tuple[float, bool]:
+        """Return a trustworthy positive recovery delta for one source meter."""
+        if previous is None:
+            _LOGGER.warning(
+                "%s source meter has no stored baseline across restart; rebasing",
+                kind,
+            )
+            return 0.0, True
+
+        delta = current - float(previous)
+        if delta < -1e-9:
+            _LOGGER.warning(
+                "%s source meter decreased across restart from %.6f to %.6f; "
+                "rebasing this meter without discarding the other source delta",
+                kind,
+                float(previous),
+                current,
+            )
+            return 0.0, True
+        return max(delta, 0.0), False
+
+    def _baseline_time(self, kind: str, fallback: datetime) -> datetime:
+        value = self._data.get(f"last_{kind}_time")
+        if isinstance(value, str):
+            parsed = dt_util.parse_datetime(value)
+            if parsed is not None and parsed.tzinfo is not None:
+                return parsed
+        return fallback
+
+    def _distribute_delta(
+        self,
+        delta: float,
+        start: datetime,
+        end: datetime,
+    ) -> dict[str, float]:
+        """Split a cumulative delta over local hour buckets by elapsed time."""
+        if delta <= 0:
+            return {}
+
+        start_utc = start.astimezone(UTC)
+        end_utc = end.astimezone(UTC)
+        if end_utc <= start_utc:
+            return {self._hour_key(end): delta}
+
+        start_key = self._hour_key(start)
+        end_key = self._hour_key(end)
+        hour_keys = self._hour_keys(start_key, end_key)
+        weights: dict[str, float] = {}
+
+        for hour_key in hour_keys:
+            hour_start = dt_util.parse_datetime(hour_key)
+            if hour_start is None or hour_start.tzinfo is None:
+                continue
+            hour_start_utc = hour_start.astimezone(UTC)
+            hour_end_utc = hour_start_utc + timedelta(hours=1)
+            overlap_start = max(start_utc, hour_start_utc)
+            overlap_end = min(end_utc, hour_end_utc)
+            seconds = (overlap_end - overlap_start).total_seconds()
+            if seconds > 0:
+                weights[hour_key] = seconds
+
+        total_seconds = sum(weights.values())
+        if total_seconds <= 0:
+            return {self._hour_key(end): delta}
+
+        return {
+            hour_key: delta * seconds / total_seconds
+            for hour_key, seconds in weights.items()
+        }
 
     def _hour_keys(self, start_key: str, end_key: str) -> list[str]:
         start = dt_util.parse_datetime(start_key)
@@ -414,7 +494,7 @@ class EneaRcemRuntime:
             current_utc += timedelta(hours=1)
         return keys
 
-    def _resume_one(self, kind: str, current: float | None) -> None:
+    def _resume_one(self, kind: str, current: float | None, now: datetime) -> None:
         if current is None:
             return
         key = f"last_{kind}_total"
@@ -426,9 +506,16 @@ class EneaRcemRuntime:
                     float(self._data.get(f"bucket_{kind}", 0.0)) + delta
                 )
             elif abs(delta) > 1e-9:
+                _LOGGER.warning(
+                    "%s source meter decreased from %.6f to %.6f during restart; "
+                    "rebasing without invalidating the other source",
+                    kind,
+                    float(previous),
+                    current,
+                )
                 self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
-                self._data["bucket_valid"] = False
         self._data[key] = current
+        self._data[f"last_{kind}_time"] = now.isoformat()
 
     @callback
     def _async_source_changed(self, event: Event) -> None:
@@ -455,21 +542,22 @@ class EneaRcemRuntime:
 
         if previous is None:
             self._data[key] = value
+            self._data[f"last_{kind}_time"] = now.isoformat()
             self._schedule_save()
             return
 
         delta = value - float(previous)
         self._data[key] = value
+        self._data[f"last_{kind}_time"] = now.isoformat()
         if delta < -1e-9:
             _LOGGER.warning(
                 "%s source meter decreased from %.6f to %.6f; "
-                "rebasing without adding delta",
+                "rebasing this meter without discarding the other source",
                 kind,
                 float(previous),
                 value,
             )
             self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
-            self._data["bucket_valid"] = False
         elif delta > 0:
             self._data[f"bucket_{kind}"] = (
                 float(self._data.get(f"bucket_{kind}", 0.0)) + delta
@@ -504,7 +592,9 @@ class EneaRcemRuntime:
         self._data["bucket_valid"] = True
         self._data["bucket_import"] = 0.0
         self._data["bucket_export"] = 0.0
-        self._schedule_save()
+        # Hour boundaries are accounting checkpoints. Persist them immediately
+        # so frequent meter events cannot indefinitely postpone Store writes.
+        self._save_now()
         self._notify()
 
     def _finalize_bucket(self, hour_key: str | None) -> None:
