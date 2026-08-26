@@ -1,4 +1,4 @@
-"""One-shot repair of malformed hourly LTS states from the 2026-08-25 stitch."""
+"""One-shot repair of malformed Recorder states from the 2026-08-25 stitch."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from typing import Any
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder import statistics as recorder_statistics
+from homeassistant.components.recorder.db_schema import StatisticsShortTerm
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
@@ -36,7 +37,7 @@ _COST_BASELINE_PLN = 7930.756001666447
 
 
 def register_state_repair_service(hass: HomeAssistant) -> None:
-    """Register the guarded one-shot LTS state repair service."""
+    """Register the guarded one-shot Recorder-state repair service."""
     if hass.services.has_service(DOMAIN, SERVICE_REPAIR_20260825_LTS_STATE):
         return
 
@@ -49,7 +50,7 @@ def register_state_repair_service(hass: HomeAssistant) -> None:
 async def _async_repair_lts_state(
     hass: HomeAssistant, _call: ServiceCall
 ) -> None:
-    """Offset only malformed hourly state fields; preserve sum/change exactly."""
+    """Offset malformed hourly and 5-minute state fields; preserve sums exactly."""
     runtime = _single_runtime(hass)
     _validate_expected_runtime(runtime)
 
@@ -97,8 +98,11 @@ async def _async_repair_lts_state(
             "has_sum": True,
         }
 
-    rows = await _read_rows(hass, stat_ids)
-    plans: dict[str, list[dict[str, Any]]] = {}
+    hourly_rows = await _read_rows(hass, stat_ids, "hour")
+    short_rows = await _read_rows(hass, stat_ids, "5minute")
+
+    hourly_plans: dict[str, list[dict[str, Any]]] = {}
+    short_plans: dict[str, list[dict[str, Any]]] = {}
     backup_rows: list[dict[str, Any]] = []
 
     expected_pre_stamps = [
@@ -106,10 +110,11 @@ async def _async_repair_lts_state(
     ]
     post_stamp = int(_POST_STITCH_HOUR_UTC.timestamp())
 
+    # Hourly LTS: retain the strict continuity proof used for the first repair.
     for statistic_id, (baseline, _unit) in baselines.items():
         by_start = {
             int(round(_timestamp(row["start"]))): row
-            for row in rows.get(statistic_id, [])
+            for row in hourly_rows.get(statistic_id, [])
         }
         missing = [stamp for stamp in expected_pre_stamps + [post_stamp] if stamp not in by_start]
         if missing:
@@ -123,18 +128,18 @@ async def _async_repair_lts_state(
         pre_states = [row.get("state") for row in pre_rows]
         post_state = post_row.get("state")
 
-        # Idempotent success: every affected state is already cumulative.
+        # Idempotent success: the hourly layer has already been repaired.
         if all(state is not None and float(state) >= _LOW_STATE_LIMIT for state in pre_states):
-            plans[statistic_id] = []
+            hourly_plans[statistic_id] = []
             continue
 
         if any(state is None or abs(float(state)) >= _LOW_STATE_LIMIT for state in pre_states):
             raise HomeAssistantError(
-                f"Unexpected mixed pre-stitch states for {statistic_id}; state repair refused"
+                f"Unexpected mixed pre-stitch hourly states for {statistic_id}; state repair refused"
             )
         if post_state is None or float(post_state) < _LOW_STATE_LIMIT:
             raise HomeAssistantError(
-                f"Post-stitch state is not cumulative for {statistic_id}; state repair refused"
+                f"Post-stitch hourly state is not cumulative for {statistic_id}; state repair refused"
             )
 
         corrected_last_pre = float(pre_states[-1]) + baseline
@@ -142,7 +147,7 @@ async def _async_repair_lts_state(
         expected_post = corrected_last_pre + post_change
         if abs(float(post_state) - expected_post) > _CONTINUITY_TOLERANCE:
             raise HomeAssistantError(
-                f"Continuity proof failed for {statistic_id}: corrected 18:00="
+                f"Hourly continuity proof failed for {statistic_id}: corrected 18:00="
                 f"{corrected_last_pre:.9f}, 19:00 change={post_change:.9f}, "
                 f"19:00 state={float(post_state):.9f}; state repair refused"
             )
@@ -151,40 +156,65 @@ async def _async_repair_lts_state(
         for row in pre_rows:
             old_state = float(row["state"])
             new_state = old_state + baseline
-            stat = {
-                "start": _as_datetime(row["start"]),
-                "state": new_state,
-                "sum": row.get("sum"),
-            }
-            if "last_reset" in row:
-                stat["last_reset"] = _as_datetime_or_none(row.get("last_reset"))
-            for key in ("mean", "min", "max"):
-                if key in row:
-                    stat[key] = row.get(key)
+            stat = _copy_stat_with_state(row, new_state)
             repaired.append(stat)
             backup_rows.append(
-                {
-                    "statistic_id": statistic_id,
-                    "start": stat["start"].isoformat(),
-                    "old_state": old_state,
-                    "new_state": new_state,
-                    "sum": row.get("sum"),
-                }
+                _backup_row("hour", statistic_id, stat, old_state, new_state, row.get("sum"))
             )
-        plans[statistic_id] = repaired
+        hourly_plans[statistic_id] = repaired
 
-    if not any(plans.values()):
-        _LOGGER.warning("Enea RCEm LTS state repair already applied; nothing to do")
+    # 5-minute short-term statistics: the stitch happened between 5-minute
+    # buckets, so a mixed set of relative and cumulative states is expected.
+    # Within this tightly-scoped incident window a state far below the validated
+    # baseline is unambiguously the old relative state. Correct only those rows.
+    for statistic_id, (baseline, _unit) in baselines.items():
+        rows = short_rows.get(statistic_id, [])
+        if not rows:
+            raise HomeAssistantError(
+                f"No 5-minute statistics found for {statistic_id}; state repair refused"
+            )
+
+        repaired: list[dict[str, Any]] = []
+        for row in rows:
+            state = row.get("state")
+            if state is None:
+                raise HomeAssistantError(
+                    f"5-minute state is NULL for {statistic_id} at {row.get('start')}; "
+                    "state repair refused"
+                )
+            old_state = float(state)
+            if old_state >= baseline - _LOW_STATE_LIMIT:
+                continue
+            if abs(old_state) >= _LOW_STATE_LIMIT:
+                raise HomeAssistantError(
+                    f"Unexpected intermediate 5-minute state for {statistic_id} at "
+                    f"{row.get('start')}: {old_state}; state repair refused"
+                )
+
+            new_state = old_state + baseline
+            stat = _copy_stat_with_state(row, new_state)
+            repaired.append(stat)
+            backup_rows.append(
+                _backup_row(
+                    "5minute", statistic_id, stat, old_state, new_state, row.get("sum")
+                )
+            )
+        short_plans[statistic_id] = repaired
+
+    if not any(hourly_plans.values()) and not any(short_plans.values()):
+        _LOGGER.warning("Enea RCEm Recorder state repair already applied; nothing to do")
         return
 
     repair_markers = dict(runtime._data.get("repair_markers", {}))
     marker = {
         "planned_at": datetime.now(UTC).isoformat(),
         "start_utc": _START_UTC.isoformat(),
-        "end_utc_exclusive": _POST_STITCH_HOUR_UTC.isoformat(),
+        "end_utc_exclusive": _END_UTC.isoformat(),
         "import_baseline_kwh": _IMPORT_BASELINE_KWH,
         "export_baseline_kwh": _EXPORT_BASELINE_KWH,
         "cost_baseline_pln": _COST_BASELINE_PLN,
+        "hourly_rows_planned": sum(len(v) for v in hourly_plans.values()),
+        "short_term_rows_planned": sum(len(v) for v in short_plans.values()),
         "rows": backup_rows,
         "sum_change_fields_modified": False,
     }
@@ -192,7 +222,9 @@ async def _async_repair_lts_state(
     runtime._data["repair_markers"] = repair_markers
     await runtime._store.async_save(runtime._serialize())
 
-    for statistic_id, stats in plans.items():
+    instance = get_instance(hass)
+
+    for statistic_id, stats in hourly_plans.items():
         if stats:
             recorder_statistics.async_import_statistics(
                 hass,
@@ -200,13 +232,26 @@ async def _async_repair_lts_state(
                 stats,
             )
 
-    # Recorder imports are queued. Poll the public statistics read path and only
-    # report success once the state fields are actually visible as cumulative.
+    for statistic_id, stats in short_plans.items():
+        if stats:
+            # Recorder's own queued importer supports the short-term table too.
+            # Supplying every existing field preserves sum and therefore change.
+            instance.async_import_statistics(
+                import_metadata[statistic_id],
+                stats,
+                StatisticsShortTerm,
+            )
+
+    # Both imports are queued. Poll both public read paths and only report success
+    # after every malformed state is gone while sums remain untouched.
     verified = False
     for _ in range(40):
         await asyncio.sleep(0.25)
-        check = await _read_rows(hass, stat_ids)
-        if _verify_applied(check, baselines, expected_pre_stamps):
+        hourly_check = await _read_rows(hass, stat_ids, "hour")
+        short_check = await _read_rows(hass, stat_ids, "5minute")
+        if _verify_hourly(hourly_check, baselines, expected_pre_stamps) and _verify_short(
+            short_check, baselines
+        ):
             verified = True
             break
 
@@ -221,19 +266,22 @@ async def _async_repair_lts_state(
 
     if not verified:
         raise HomeAssistantError(
-            "LTS state repair was queued but did not verify within 10 seconds; "
+            "Recorder state repair was queued but did not verify within 10 seconds; "
             "do not rerun blindly"
         )
 
     _LOGGER.warning(
-        "Enea RCEm LTS state repair verified: corrected %d hourly state rows; "
-        "sum/change were preserved",
-        len(backup_rows),
+        "Enea RCEm Recorder state repair verified: corrected %d hourly and %d "
+        "5-minute state rows; sums were preserved",
+        sum(len(v) for v in hourly_plans.values()),
+        sum(len(v) for v in short_plans.values()),
     )
 
 
 async def _read_rows(
-    hass: HomeAssistant, stat_ids: set[str]
+    hass: HomeAssistant,
+    stat_ids: set[str],
+    period: str,
 ) -> dict[str, list[dict[str, Any]]]:
     instance = get_instance(hass)
     return await instance.async_add_executor_job(
@@ -242,13 +290,13 @@ async def _read_rows(
         _START_UTC,
         _END_UTC,
         stat_ids,
-        "hour",
+        period,
         _RECORDER_ENERGY_UNITS,
         {"change", "last_reset", "max", "mean", "min", "state", "sum"},
     )
 
 
-def _verify_applied(
+def _verify_hourly(
     rows: dict[str, list[dict[str, Any]]],
     baselines: dict[str, tuple[float, str]],
     expected_pre_stamps: list[int],
@@ -265,6 +313,53 @@ def _verify_applied(
             if float(row["state"]) < baseline - _LOW_STATE_LIMIT:
                 return False
     return True
+
+
+def _verify_short(
+    rows: dict[str, list[dict[str, Any]]],
+    baselines: dict[str, tuple[float, str]],
+) -> bool:
+    for statistic_id, (baseline, _unit) in baselines.items():
+        stat_rows = rows.get(statistic_id, [])
+        if not stat_rows:
+            return False
+        for row in stat_rows:
+            state = row.get("state")
+            if state is None or float(state) < baseline - _LOW_STATE_LIMIT:
+                return False
+    return True
+
+
+def _copy_stat_with_state(row: dict[str, Any], state: float) -> dict[str, Any]:
+    stat: dict[str, Any] = {
+        "start": _as_datetime(row["start"]),
+        "state": state,
+        "sum": row.get("sum"),
+    }
+    if "last_reset" in row:
+        stat["last_reset"] = _as_datetime_or_none(row.get("last_reset"))
+    for key in ("mean", "min", "max"):
+        if key in row:
+            stat[key] = row.get(key)
+    return stat
+
+
+def _backup_row(
+    period: str,
+    statistic_id: str,
+    stat: dict[str, Any],
+    old_state: float,
+    new_state: float,
+    sum_value: Any,
+) -> dict[str, Any]:
+    return {
+        "period": period,
+        "statistic_id": statistic_id,
+        "start": stat["start"].isoformat(),
+        "old_state": old_state,
+        "new_state": new_state,
+        "sum": sum_value,
+    }
 
 
 def _single_runtime(hass: HomeAssistant) -> EneaRcemRuntime:
