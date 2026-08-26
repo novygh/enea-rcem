@@ -9,6 +9,7 @@ from typing import Any
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder import statistics as recorder_statistics
+from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 
@@ -25,6 +26,7 @@ _POST_STITCH_HOUR_UTC = datetime(2026, 8, 25, 19, 0, tzinfo=UTC)
 _END_UTC = datetime(2026, 8, 25, 20, 0, tzinfo=UTC)
 _LOW_STATE_LIMIT = 100.0
 _CONTINUITY_TOLERANCE = 0.01
+_RECORDER_ENERGY_UNITS = {"energy": UnitOfEnergy.KILO_WATT_HOUR}
 
 # Exact cumulative baselines immediately before the broken live-relative states.
 # These were already validated against the historical backfill before the stitch.
@@ -241,7 +243,7 @@ async def _read_rows(
         _END_UTC,
         stat_ids,
         "hour",
-        None,
+        _RECORDER_ENERGY_UNITS,
         {"change", "last_reset", "max", "mean", "min", "state", "sum"},
     )
 
