@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import logging
 from typing import Any
 
@@ -167,7 +167,7 @@ class StatisticsAligner:
         parsed_targets.sort(key=lambda item: item[0])
         start = parsed_targets[0][0]
         end = parsed_targets[-1][0].replace(minute=0, second=0, microsecond=0)
-        end = end + __import__("datetime").timedelta(hours=1)
+        end += timedelta(hours=1)
 
         instance = get_instance(self.hass)
         stat_ids = {self.import_stat_id, self.export_stat_id, self.cost_stat_id}
@@ -185,7 +185,9 @@ class StatisticsAligner:
         current: dict[str, dict[int, float]] = {}
         for statistic_id, stat_rows in rows.items():
             current[statistic_id] = {
-                int(round(_timestamp(row["start"]))): float(row.get("change", 0.0) or 0.0)
+                int(round(_timestamp(row["start"]))): float(
+                    row.get("change", 0.0) or 0.0
+                )
                 for row in stat_rows
             }
 
