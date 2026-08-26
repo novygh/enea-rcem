@@ -68,16 +68,21 @@ def register_repair_service(hass: HomeAssistant) -> None:
     """Register the guarded one-shot repair service once."""
     if hass.services.has_service(DOMAIN, SERVICE_REPAIR_20260825):
         return
+
+    async def _handle(call: ServiceCall) -> None:
+        await _async_handle_repair_20260825(hass, call)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_REPAIR_20260825,
-        _async_handle_repair_20260825,
+        _handle,
     )
 
 
-async def _async_handle_repair_20260825(call: ServiceCall) -> None:
+async def _async_handle_repair_20260825(
+    hass: HomeAssistant, _call: ServiceCall
+) -> None:
     """Apply or resume the guarded transition repair."""
-    hass = call.hass
     entries = hass.config_entries.async_entries(DOMAIN)
     runtimes = [
         entry.runtime_data
