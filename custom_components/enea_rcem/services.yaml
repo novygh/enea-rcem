@@ -1,0 +1,6 @@
+repair_20260825_transition:
+  name: Repair 2026-08-25 transition
+  description: >-
+    Applies the guarded one-shot Recorder and current-month runtime correction
+    for the diagnosed 2026-08-25 migration boundary. The service is idempotent:
+    re-running it only queues differences that are still missing.
