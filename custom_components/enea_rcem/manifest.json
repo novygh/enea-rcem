@@ -1,7 +1,9 @@
 {
   "domain": "enea_rcem",
   "name": "Enea RCEm",
-  "codeowners": ["@novygh"],
+  "codeowners": [
+    "@novygh"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/novygh/enea-rcem",
   "issue_tracker": "https://github.com/novygh/enea-rcem/issues",
