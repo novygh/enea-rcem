@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 from .compensation import CompensationReconciler
 from .const import PLATFORMS
 from .deposit import DepositCoordinator
+from .repair import register_repair_service
 from .runtime import EneaRcemRuntime
 from .settled_daily import SettledDailyCoordinator
 
@@ -18,6 +19,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await runtime.async_setup()
     entry.runtime_data = runtime
 
+    register_repair_service(hass)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
