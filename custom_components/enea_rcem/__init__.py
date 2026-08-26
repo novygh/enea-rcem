@@ -11,13 +11,18 @@ from .deposit import DepositCoordinator
 from .repair import register_repair_service
 from .runtime import EneaRcemRuntime
 from .settled_daily import SettledDailyCoordinator
+from .statistics_alignment import StatisticsAligner
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Enea RCEm from a config entry."""
     runtime = EneaRcemRuntime(hass, entry)
+    statistics_aligner = StatisticsAligner(hass, entry, runtime)
+    statistics_aligner.install_capture()
+
     await runtime.async_setup()
     entry.runtime_data = runtime
+    runtime.statistics_aligner = statistics_aligner
 
     register_repair_service(hass)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -30,6 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     runtime.deposit_coordinator = deposit
     runtime.settled_daily_coordinator = settled_daily
 
+    await statistics_aligner.async_setup()
     await reconciler.async_setup()
     await deposit.async_setup()
     await settled_daily.async_setup()
@@ -58,6 +64,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         if reconciler is not None:
             await reconciler.async_shutdown()
+
+        statistics_aligner: StatisticsAligner | None = getattr(
+            runtime, "statistics_aligner", None
+        )
+        if statistics_aligner is not None:
+            await statistics_aligner.async_shutdown()
 
         await runtime.async_shutdown()
     return unload_ok
