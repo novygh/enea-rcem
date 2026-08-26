@@ -49,13 +49,15 @@ def register_repair_service(hass: HomeAssistant) -> None:
 async def _async_handle_repair_20260825_v2(
     hass: HomeAssistant, _call: ServiceCall
 ) -> None:
-    """Rebuild August runtime totals and transition statistics from physical LTS."""
+    """Rebuild only the affected transition interval from physical source LTS."""
     runtime = _single_runtime(hass)
     _validate_expected_runtime(runtime)
 
     aligner = getattr(runtime, "statistics_aligner", None)
     if not isinstance(aligner, StatisticsAligner):
         raise HomeAssistantError("Hourly statistics aligner is not loaded; repair refused")
+    if not all((aligner.import_stat_id, aligner.export_stat_id, aligner.cost_stat_id)):
+        raise HomeAssistantError("Hourly statistics IDs are unresolved; repair refused")
 
     tz = dt_util.get_time_zone(hass.config.time_zone)
     month_start_local = datetime(2026, 8, 1, tzinfo=tz)
@@ -65,10 +67,31 @@ async def _async_handle_repair_20260825_v2(
         raise HomeAssistantError("No completed transition hours are available to repair")
 
     instance = get_instance(hass)
-    source_rows = await instance.async_add_executor_job(
+
+    # Everything before the live-transition boundary already belongs to the
+    # validated/backfilled Enea statistics. Do not require physical LTS to be
+    # complete there: brief source-LTS holes before 25 August are unrelated to
+    # this incident and must not block the repair.
+    pre_rows = await instance.async_add_executor_job(
         recorder_statistics.statistics_during_period,
         hass,
         month_start_utc,
+        _BROKEN_START_UTC,
+        {aligner.import_stat_id, aligner.export_stat_id, aligner.cost_stat_id},
+        "hour",
+        _RECORDER_ENERGY_UNITS,
+        {"change", "sum"},
+    )
+    pre_import = _sum_changes(pre_rows.get(aligner.import_stat_id, []))
+    pre_export = _sum_changes(pre_rows.get(aligner.export_stat_id, []))
+    pre_cost = _sum_changes(pre_rows.get(aligner.cost_stat_id, []))
+
+    # Reconstruct only the broken/live interval from the physical cumulative
+    # source statistics. Here completeness is mandatory: no guessing.
+    source_rows = await instance.async_add_executor_job(
+        recorder_statistics.statistics_during_period,
+        hass,
+        _BROKEN_START_UTC,
         end_utc,
         {runtime.import_entity, runtime.export_entity},
         "hour",
@@ -78,7 +101,7 @@ async def _async_handle_repair_20260825_v2(
 
     import_changes = _changes_by_start(source_rows.get(runtime.import_entity, []))
     export_changes = _changes_by_start(source_rows.get(runtime.export_entity, []))
-    expected_hours = _hour_starts(month_start_utc, end_utc)
+    expected_hours = _hour_starts(_BROKEN_START_UTC, end_utc)
     missing = [
         start.isoformat()
         for start in expected_hours
@@ -88,14 +111,14 @@ async def _async_handle_repair_20260825_v2(
     if missing:
         preview = ", ".join(missing[:6])
         raise HomeAssistantError(
-            f"Physical source LTS is incomplete for {len(missing)} hours "
-            f"({preview}); repair refused without guessing"
+            f"Physical source LTS is incomplete inside the affected interval for "
+            f"{len(missing)} hours ({preview}); repair refused without guessing"
         )
 
-    all_targets: dict[str, dict[str, float]] = {}
-    month_import = 0.0
-    month_export = 0.0
-    month_cost = 0.0
+    repair_targets: dict[str, dict[str, float]] = {}
+    repaired_import = 0.0
+    repaired_export = 0.0
+    repaired_cost = 0.0
 
     for start in expected_hours:
         stamp = int(start.timestamp())
@@ -111,22 +134,21 @@ async def _async_handle_repair_20260825_v2(
         fixed_hour = runtime.fixed_monthly_gross / runtime._hours_in_month(hour_key)
         import_cost = fixed_hour + balanced_import * runtime.variable_rate_gross
 
-        all_targets[hour_key] = {
+        repair_targets[hour_key] = {
             "import_kwh": balanced_import,
             "export_kwh": balanced_export,
             "import_cost_pln": import_cost,
         }
-        month_import += balanced_import
-        month_export += balanced_export
-        month_cost += import_cost
+        repaired_import += balanced_import
+        repaired_export += balanced_export
+        repaired_cost += import_cost
 
-    repair_targets = {
-        hour_key: values
-        for hour_key, values in all_targets.items()
-        if datetime.fromisoformat(hour_key).astimezone(UTC) >= _BROKEN_START_UTC
-    }
     if not repair_targets:
         raise HomeAssistantError("No reconstructed transition targets; repair refused")
+
+    month_import = pre_import + repaired_import
+    month_export = pre_export + repaired_export
+    month_cost = pre_cost + repaired_cost
 
     monthly_import = dict(runtime._data.get("monthly_import", {}))
     monthly_export = dict(runtime._data.get("monthly_export", {}))
@@ -151,8 +173,13 @@ async def _async_handle_repair_20260825_v2(
         "month_start_utc": month_start_utc.isoformat(),
         "repair_start_utc": _BROKEN_START_UTC.isoformat(),
         "repair_end_utc_exclusive": end_utc.isoformat(),
-        "physical_hours": len(expected_hours),
+        "pre_transition_import_kwh": pre_import,
+        "pre_transition_export_kwh": pre_export,
+        "pre_transition_import_cost_pln": pre_cost,
         "repair_hours": len(repair_targets),
+        "repaired_interval_import_kwh": repaired_import,
+        "repaired_interval_export_kwh": repaired_export,
+        "repaired_interval_import_cost_pln": repaired_cost,
         "monthly_import_before_kwh": old_month_import,
         "monthly_import_after_kwh": month_import,
         "monthly_export_before_kwh": old_month_export,
@@ -177,8 +204,9 @@ async def _async_handle_repair_20260825_v2(
     await runtime._store.async_save(runtime._serialize())
 
     _LOGGER.warning(
-        "Enea RCEm transition v2 reconstructed %d physical hours, rebuilt August "
-        "to %.6f kWh import / %.6f kWh export and queued %d statistics adjustments",
+        "Enea RCEm transition v2 preserved pre-transition August statistics, "
+        "reconstructed %d affected hours, rebuilt August to %.6f kWh import / "
+        "%.6f kWh export and queued %d statistics adjustments",
         len(expected_hours),
         month_import,
         month_export,
@@ -276,6 +304,10 @@ def _changes_by_start(rows: list[dict[str, Any]]) -> dict[int, float]:
             row.get("change", 0.0) or 0.0
         )
     return result
+
+
+def _sum_changes(rows: list[dict[str, Any]]) -> float:
+    return sum(float(row.get("change", 0.0) or 0.0) for row in rows)
 
 
 def _timestamp(value: Any) -> float:
