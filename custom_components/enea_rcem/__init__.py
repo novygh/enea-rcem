@@ -11,6 +11,7 @@ from .deposit import DepositCoordinator
 from .repair import register_repair_service
 from .runtime import EneaRcemRuntime
 from .settled_daily import SettledDailyCoordinator
+from .shortterm_repair import register_shortterm_repair_service
 from .state_repair import register_state_repair_service
 from .statistics_alignment import StatisticsAligner
 
@@ -27,6 +28,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     register_repair_service(hass)
     register_state_repair_service(hass)
+    register_shortterm_repair_service(hass)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -45,38 +47,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        runtime: EneaRcemRuntime = entry.runtime_data
+    """Unload Enea RCEm config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if not unload_ok:
+        return False
 
-        settled_daily: SettledDailyCoordinator | None = getattr(
-            runtime, "settled_daily_coordinator", None
-        )
-        if settled_daily is not None:
-            await settled_daily.async_shutdown()
+    runtime: EneaRcemRuntime = entry.runtime_data
 
-        deposit: DepositCoordinator | None = getattr(
-            runtime, "deposit_coordinator", None
-        )
-        if deposit is not None:
-            await deposit.async_shutdown()
+    for attr in (
+        "settled_daily_coordinator",
+        "deposit_coordinator",
+        "compensation_reconciler",
+        "statistics_aligner",
+    ):
+        coordinator = getattr(runtime, attr, None)
+        if coordinator is not None:
+            await coordinator.async_shutdown()
 
-        reconciler: CompensationReconciler | None = getattr(
-            runtime, "compensation_reconciler", None
-        )
-        if reconciler is not None:
-            await reconciler.async_shutdown()
-
-        statistics_aligner: StatisticsAligner | None = getattr(
-            runtime, "statistics_aligner", None
-        )
-        if statistics_aligner is not None:
-            await statistics_aligner.async_shutdown()
-
-        await runtime.async_shutdown()
-    return unload_ok
+    await runtime.async_shutdown()
+    return True
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload after options are changed."""
+    """Reload Enea RCEm when config entry options change."""
     await hass.config_entries.async_reload(entry.entry_id)
