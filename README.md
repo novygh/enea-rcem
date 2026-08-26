@@ -2,7 +2,7 @@
 
 Home Assistant custom integration for Polish prosumer settlement with **Enea / Enea Operator G11** and monthly **PSE RCEm**.
 
-**Current stable version: 1.0.3**
+**Current stable version: 1.1.0**
 
 > This project is intended to reproduce and monitor settlement logic in Home Assistant. Always verify tariff values and final billing against your contract and invoice.
 
@@ -140,11 +140,13 @@ The deposit model is reconstructed from monthly Recorder statistics. Export valu
 
 Deposit sensors are current snapshots; the cumulative historical accounting remains in Recorder statistics and the cumulative import/export/cost/compensation sensors.
 
-## Historical data
+## Historical data and recovery tools
 
-Version 1.0.3 does **not** automatically invent pre-installation history. Advanced migration/backfill tooling is included in `tools/` for installations where trustworthy historical cumulative meter statistics already exist.
+Version 1.1.0 does **not** automatically invent pre-installation history. Advanced migration and diagnostic tooling is included in `tools/` for installations where trustworthy historical cumulative meter statistics already exist.
 
-Historical writes to Recorder should be treated as an advanced operation: make a Home Assistant backup first and validate the resulting long-term statistics after migration.
+The production integration does not expose one-shot database repair services. The temporary services used to repair the diagnosed 2026-08-25 migration boundary were removed after verification; their source remains available in Git history. A read-only Recorder continuity audit is provided as `tools/recorder_statistics_audit.py` for future investigations.
+
+Historical writes to Recorder should be treated as an advanced operation: make a Home Assistant backup first and validate the resulting long-term statistics after migration. See `tools/README.md` before using any migration helper.
 
 ## Data sources
 
