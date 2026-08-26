@@ -47,27 +47,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload Enea RCEm config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if not unload_ok:
-        return False
+    """Unload a config entry."""
+    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        runtime: EneaRcemRuntime = entry.runtime_data
 
-    runtime: EneaRcemRuntime = entry.runtime_data
+        settled_daily: SettledDailyCoordinator | None = getattr(
+            runtime, "settled_daily_coordinator", None
+        )
+        if settled_daily is not None:
+            await settled_daily.async_shutdown()
 
-    for attr in (
-        "settled_daily_coordinator",
-        "deposit_coordinator",
-        "compensation_reconciler",
-        "statistics_aligner",
-    ):
-        coordinator = getattr(runtime, attr, None)
-        if coordinator is not None:
-            await coordinator.async_shutdown()
+        deposit: DepositCoordinator | None = getattr(
+            runtime, "deposit_coordinator", None
+        )
+        if deposit is not None:
+            await deposit.async_shutdown()
 
-    await runtime.async_shutdown()
-    return True
+        reconciler: CompensationReconciler | None = getattr(
+            runtime, "compensation_reconciler", None
+        )
+        if reconciler is not None:
+            await reconciler.async_shutdown()
+
+        statistics_aligner: StatisticsAligner | None = getattr(
+            runtime, "statistics_aligner", None
+        )
+        if statistics_aligner is not None:
+            await statistics_aligner.async_shutdown()
+
+        await runtime.async_shutdown()
+    return unload_ok
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload Enea RCEm when config entry options change."""
+    """Reload after options are changed."""
     await hass.config_entries.async_reload(entry.entry_id)
