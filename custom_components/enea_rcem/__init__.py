@@ -11,6 +11,7 @@ from .deposit import DepositCoordinator
 from .repair import register_repair_service
 from .runtime import EneaRcemRuntime
 from .settled_daily import SettledDailyCoordinator
+from .state_repair import register_state_repair_service
 from .statistics_alignment import StatisticsAligner
 
 
@@ -25,6 +26,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     runtime.statistics_aligner = statistics_aligner
 
     register_repair_service(hass)
+    register_state_repair_service(hass)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
