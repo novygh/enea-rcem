@@ -35,6 +35,16 @@ DEFAULT_SUBSCRIPTION_FEE_NET = 0.32
 DEFAULT_TRANSITION_FEE_NET = 0.0
 DEFAULT_VAT_RATE = 23.0
 
+# Historical reference only. These values come directly from the two complete
+# pre-PV invoices covering 2024-03-20 through 2024-06-11. They are deliberately
+# excluded from RCEm calculations, cumulative PV-era counters and Energy Dashboard
+# statistics. The prosumer/PV accounting scope starts on 2024-06-12.
+PRE_PV_PERIOD_START = "2024-03-20"
+PRE_PV_PERIOD_END = "2024-06-11"
+PRE_PV_ENERGY_KWH = 1032.0
+PRE_PV_COST_PLN = 1123.66
+PROSUMER_HISTORY_START = "2024-06-12T00:00:00+02:00"
+
 PROSUMER_DEPOSIT_FACTOR = 1.23
 RCEM_URL = "https://www.pse.pl/oire/rcem-rynkowa-miesieczna-cena-energii-elektrycznej"
 RCEM_REFRESH_HOURS = 6
