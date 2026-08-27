@@ -2,7 +2,7 @@
 
 Home Assistant custom integration for Polish prosumer settlement with **Enea / Enea Operator G11** and monthly **PSE RCEm**.
 
-**Current stable version: 1.1.0**
+**Current stable version: 1.1.1**
 
 > This project is intended to reproduce and monitor settlement logic in Home Assistant. Always verify tariff values and final billing against your contract and invoice.
 
@@ -74,7 +74,11 @@ If the immediately preceding calendar month is not settled yet, the integration 
 
 ### Diagnostics
 
+- **Pre-PV energy** — informational constant: 1032 kWh for the complete invoice period 2024-03-20 through 2024-06-11.
+- **Pre-PV cost** — informational constant: 1123.66 PLN for the same complete invoice period.
 - **Data gaps** — counts only cases where at least one cumulative source-meter baseline is missing or untrustworthy. A normal restart with recoverable cumulative deltas does not count as a gap.
+
+The pre-PV reference sensors are informational only. They are not included in RCEm calculations, cumulative PV-era counters or Energy Dashboard statistics. Historical prosumer accounting starts on 2024-06-12.
 
 ## Energy Dashboard
 
@@ -142,7 +146,7 @@ Deposit sensors are current snapshots; the cumulative historical accounting rema
 
 ## Historical data and recovery tools
 
-Version 1.1.0 does **not** automatically invent pre-installation history. Advanced migration and diagnostic tooling is included in `tools/` for installations where trustworthy historical cumulative meter statistics already exist.
+Version 1.1.1 does **not** automatically invent pre-installation history. Advanced migration and diagnostic tooling is included in `tools/` for installations where trustworthy historical cumulative meter statistics already exist.
 
 The production integration does not expose one-shot database repair services. The temporary services used to repair the diagnosed 2026-08-25 migration boundary were removed after verification; their source remains available in Git history. A read-only Recorder continuity audit is provided as `tools/recorder_statistics_audit.py` for future investigations.
 
