@@ -18,7 +18,15 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, PROSUMER_DEPOSIT_FACTOR
+from .const import (
+    DOMAIN,
+    PRE_PV_COST_PLN,
+    PRE_PV_ENERGY_KWH,
+    PRE_PV_PERIOD_END,
+    PRE_PV_PERIOD_START,
+    PROSUMER_DEPOSIT_FACTOR,
+    PROSUMER_HISTORY_START,
+)
 from .runtime import EneaRcemRuntime
 
 
@@ -184,6 +192,18 @@ def _deposit_attrs(runtime: EneaRcemRuntime) -> dict:
     }
 
 
+def _pre_pv_attrs(_runtime: EneaRcemRuntime) -> dict:
+    return {
+        "period_start": PRE_PV_PERIOD_START,
+        "period_end": PRE_PV_PERIOD_END,
+        "source": "invoices",
+        "informational_only": True,
+        "included_in_rcem_calculations": False,
+        "included_in_energy_dashboard": False,
+        "prosumer_history_start": PROSUMER_HISTORY_START,
+    }
+
+
 SENSORS: tuple[EneaRcemSensorDescription, ...] = (
     EneaRcemSensorDescription(
         key="rcem",
@@ -312,6 +332,26 @@ SENSORS: tuple[EneaRcemSensorDescription, ...] = (
         native_unit_of_measurement="PLN",
         suggested_display_precision=2,
         value_fn=lambda r: _deposit_value(r, "active_energy_due_current_month"),
+    ),
+    EneaRcemSensorDescription(
+        key="pre_pv_energy",
+        translation_key="pre_pv_energy",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=0,
+        icon="mdi:transmission-tower-import",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda _r: PRE_PV_ENERGY_KWH,
+        attrs_fn=_pre_pv_attrs,
+    ),
+    EneaRcemSensorDescription(
+        key="pre_pv_cost",
+        translation_key="pre_pv_cost",
+        native_unit_of_measurement="PLN",
+        suggested_display_precision=2,
+        icon="mdi:cash-clock",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda _r: PRE_PV_COST_PLN,
+        attrs_fn=_pre_pv_attrs,
     ),
     EneaRcemSensorDescription(
         key="data_gaps",
