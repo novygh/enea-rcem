@@ -1,52 +1,52 @@
 # Enea RCEm
 
-Home Assistant custom integration for Polish prosumer settlement with **Enea / Enea Operator G11** and monthly **PSE RCEm**.
+Niestandardowa integracja dla Home Assistanta przeznaczona do rozliczeń prosumenckich z **Enea / Enea Operator G11** z wykorzystaniem miesięcznych wartości **PSE RCEm**.
 
-**Current stable version: 1.1.1**
+**Aktualna stabilna wersja: 1.1.1**
 
-> This project is intended to reproduce and monitor settlement logic in Home Assistant. Always verify tariff values and final billing against your contract and invoice.
+> Projekt służy do odtwarzania i monitorowania logiki rozliczeń w Home Assistant. Wartości taryf i końcowe rozliczenia należy zawsze porównywać z własną umową i fakturą.
 
-## Scope
+## Zakres
 
-Enea RCEm is designed for prosumers settled using **monthly RCEm**, not hourly RCE. It uses existing cumulative grid import/export meters in Home Assistant and builds billing-oriented sensors locally.
+Enea RCEm jest przeznaczona dla prosumentów rozliczanych według **miesięcznego RCEm**, a nie godzinowego RCE. Korzysta z istniejących w Home Assistant skumulowanych liczników importu i eksportu energii oraz lokalnie buduje sensory związane z rozliczeniem.
 
-The integration:
+Integracja:
 
-- performs hourly import/export balancing,
-- applies independent post-balance import/export calibration,
-- fetches official monthly RCEm values from PSE,
-- detects later PSE RCEm corrections,
-- keeps export compensation assigned to the month in which the energy was exported,
-- exposes the latest fully settled month with its import cost and export compensation for dashboards,
-- exposes day-by-day cost and export-value series for that settled month,
-- exposes signed monthly energy and financial balance sensors,
-- applies historical prosumer-factor rules,
-- calculates gross import cost from configurable Enea / Enea Operator rates and VAT,
-- accrues fixed monthly charges across the month,
-- reconstructs trustworthy cumulative meter deltas after Home Assistant restarts,
-- distributes a recovered multi-hour delta over the missing hourly buckets instead of dropping energy,
-- only increments the **Data gaps** diagnostic when a source baseline is actually missing or untrustworthy,
-- reconstructs the prosumer deposit from Recorder statistics,
-- keeps persistent runtime counters in Home Assistant storage without additional helpers.
+- wykonuje godzinowe bilansowanie importu i eksportu,
+- stosuje niezależną kalibrację importu i eksportu po bilansowaniu,
+- pobiera oficjalne miesięczne wartości RCEm z PSE,
+- wykrywa późniejsze korekty RCEm publikowane przez PSE,
+- przypisuje rekompensatę za eksport do miesiąca, w którym energia została oddana do sieci,
+- udostępnia ostatni w pełni rozliczony miesiąc wraz z kosztem importu i rekompensatą eksportu do użycia na dashboardach,
+- udostępnia dzienną serię kosztu i wartości eksportu dla tego rozliczonego miesiąca,
+- udostępnia sensory miesięcznego bilansu energii i finansów ze znakiem,
+- stosuje historyczne zasady współczynnika prosumenckiego,
+- oblicza koszt brutto importu na podstawie konfigurowalnych stawek Enea / Enea Operator i VAT,
+- nalicza stałe opłaty miesięczne proporcjonalnie w ciągu miesiąca,
+- odtwarza wiarygodne przyrosty liczników skumulowanych po restartach Home Assistanta,
+- rozdziela odzyskany wielogodzinny przyrost pomiędzy brakujące przedziały godzinowe zamiast gubić energię,
+- zwiększa diagnostykę **Luki danych** wyłącznie wtedy, gdy brakuje wiarygodnej wartości bazowej któregoś źródła,
+- rekonstruuje depozyt prosumencki ze statystyk Recorder,
+- przechowuje trwałe liczniki robocze w magazynie danych Home Assistanta bez dodatkowych helperów.
 
-## Sensors
+## Sensory
 
-### Energy
+### Energia
 
-- **Balanced import** — cumulative hourly-balanced import; native calculation in kWh, suggested display in MWh with 3 decimals.
-- **Balanced export** — cumulative hourly-balanced export; native calculation in kWh, suggested display in MWh with 3 decimals.
-- **Current month energy balance** — signed current-month grid balance in kWh, calculated as import minus export. Negative means net export; positive means net import.
+- **Import zbilansowany** — skumulowany import po bilansowaniu godzinowym; obliczenia wykonywane są w kWh, sugerowane wyświetlanie w MWh z trzema miejscami po przecinku.
+- **Eksport zbilansowany** — skumulowany eksport po bilansowaniu godzinowym; obliczenia wykonywane są w kWh, sugerowane wyświetlanie w MWh z trzema miejscami po przecinku.
+- **Bilans energii bieżącego miesiąca** — miesięczny bilans sieci ze znakiem w kWh, liczony jako import minus eksport. Wartość ujemna oznacza przewagę eksportu, dodatnia przewagę importu.
 
-### Prices and billing
+### Ceny i rozliczenia
 
-- **PSE RCEm** — latest published monthly RCEm.
-- **PSE RCEm Prosumer** — RCEm with the currently applicable prosumer factor.
-- **Import cost** — cumulative gross import cost.
-- **Export compensation** — cumulative value of settled export for months with published RCEm.
-- **Last settled month balance** — signed financial result for the latest closed month with RCEm and Recorder billing data, calculated as import cost minus export compensation. Positive means net cost; negative means export value exceeded import cost.
-- **Current month estimated export compensation** — estimate based on the latest available RCEm until the current month is officially published.
+- **PSE RCEm** — najnowsza opublikowana miesięczna wartość RCEm.
+- **PSE RCEm Prosument** — RCEm z aktualnie obowiązującym współczynnikiem prosumenckim.
+- **Koszt importu** — skumulowany koszt brutto importu.
+- **Rekompensata eksportu** — skumulowana wartość rozliczonego eksportu dla miesięcy z opublikowanym RCEm.
+- **Bilans ostatniego rozliczonego miesiąca** — wynik finansowy ze znakiem dla najnowszego zamkniętego miesiąca, dla którego dostępne są RCEm i dane rozliczeniowe Recorder; liczony jako koszt importu minus rekompensata eksportu. Wartość dodatnia oznacza koszt netto, ujemna oznacza, że wartość eksportu przekroczyła koszt importu.
+- **Szacowana rekompensata eksportu bieżącego miesiąca** — szacunek na podstawie najnowszej dostępnej wartości RCEm do czasu oficjalnej publikacji RCEm dla bieżącego miesiąca.
 
-The **Export compensation** sensor also exposes dashboard-oriented attributes for the latest closed month that has both an official RCEm publication and Recorder billing data:
+Sensor **Rekompensata eksportu** udostępnia również atrybuty przeznaczone do dashboardów dla najnowszego zamkniętego miesiąca, dla którego istnieją zarówno oficjalna publikacja RCEm, jak i dane rozliczeniowe Recorder:
 
 - `last_settled_month`,
 - `last_settled_import_cost_pln`,
@@ -54,111 +54,111 @@ The **Export compensation** sensor also exposes dashboard-oriented attributes fo
 - `last_settled_daily_month`,
 - `last_settled_daily`.
 
-`last_settled_daily` contains one item for every calendar day of the selected month with:
+`last_settled_daily` zawiera po jednej pozycji dla każdego dnia kalendarzowego wybranego miesiąca:
 
 - `date`,
 - `import_cost_pln`,
 - `export_compensation_pln`,
 - `export_kwh`.
 
-The daily export value is reconstructed from that day's balanced export and the official RCEm/factor for the selected settlement month. This avoids assigning the whole monthly RCEm reconciliation adjustment to a single day.
+Dzienna wartość eksportu jest rekonstruowana na podstawie zbilansowanego eksportu z danego dnia oraz oficjalnego RCEm/współczynnika dla wybranego miesiąca rozliczeniowego. Dzięki temu miesięczna korekta RCEm nie jest przypisywana w całości do pojedynczego dnia.
 
-If the immediately preceding calendar month is not settled yet, the integration automatically falls back to the newest earlier month that is settled.
+Jeżeli bezpośrednio poprzedzający miesiąc kalendarzowy nie jest jeszcze rozliczony, integracja automatycznie wybiera najnowszy wcześniejszy miesiąc, który jest już rozliczony.
 
-### Prosumer deposit
+### Depozyt prosumencki
 
-- **Prosumer deposit balance** — currently available deposit balance.
-- **Deposit assigned this month** — value assigned to the deposit in the current month from the previous settlement month.
-- **Deposit used this month** — deposit already used against active-energy purchase in the current month.
-- **Active energy due this month** — active-energy amount still payable after deposit use.
+- **Stan depozytu prosumenckiego** — aktualnie dostępny stan depozytu.
+- **Depozyt przypisany w tym miesiącu** — wartość przypisana do depozytu w bieżącym miesiącu z poprzedniego miesiąca rozliczeniowego.
+- **Depozyt wykorzystany w tym miesiącu** — część depozytu już wykorzystana na pokrycie zakupu energii czynnej w bieżącym miesiącu.
+- **Energia czynna do zapłaty w tym miesiącu** — kwota za energię czynną pozostała do zapłaty po wykorzystaniu depozytu.
 
-### Diagnostics
+### Diagnostyka
 
-- **Pre-PV energy** — informational constant: 1032 kWh for the complete invoice period 2024-03-20 through 2024-06-11.
-- **Pre-PV cost** — informational constant: 1123.66 PLN for the same complete invoice period.
-- **Data gaps** — counts only cases where at least one cumulative source-meter baseline is missing or untrustworthy. A normal restart with recoverable cumulative deltas does not count as a gap.
+- **Energia przed PV** — informacyjna stała: 1032 kWh dla pełnego okresu fakturowego od 2024-03-20 do 2024-06-11.
+- **Koszt przed PV** — informacyjna stała: 1123,66 PLN dla tego samego pełnego okresu fakturowego.
+- **Luki danych** — licznik zwiększany tylko wtedy, gdy co najmniej jedna bazowa wartość skumulowanego licznika źródłowego jest brakująca lub niewiarygodna. Zwykły restart, po którym możliwe jest odzyskanie przyrostów skumulowanych, nie jest traktowany jako luka.
 
-The pre-PV reference sensors are informational only. They are not included in RCEm calculations, cumulative PV-era counters or Energy Dashboard statistics. Historical prosumer accounting starts on 2024-06-12.
+Sensory referencyjne sprzed PV są wyłącznie informacyjne. Nie są uwzględniane w obliczeniach RCEm, skumulowanych licznikach okresu PV ani statystykach Energy Dashboard. Historyczne rozliczenia prosumenckie zaczynają się od 2024-06-12.
 
 ## Energy Dashboard
 
-For grid configuration, use the integration's own statistics:
+Dla konfiguracji sieci używaj własnych statystyk integracji:
 
-- grid import: **Balanced import**,
-- grid export: **Balanced export**,
-- import cost: **Import cost**,
-- export compensation: **Export compensation**.
+- import z sieci: **Import zbilansowany**,
+- eksport do sieci: **Eksport zbilansowany**,
+- koszt importu: **Koszt importu**,
+- rekompensata eksportu: **Rekompensata eksportu**.
 
-Do not attach a separate current-price entity when using the cumulative cost/compensation sensors above.
+Nie podłączaj osobnej encji bieżącej ceny, jeżeli używasz powyższych skumulowanych sensorów kosztu i rekompensaty.
 
-The signed monthly balance sensors are dashboard convenience snapshots and are not intended to replace the cumulative statistics used by the Energy Dashboard.
+Miesięczne sensory bilansu ze znakiem są pomocniczymi migawkami do dashboardów i nie zastępują statystyk skumulowanych używanych przez Energy Dashboard.
 
-## Installation with HACS
+## Instalacja przez HACS
 
-1. Open **HACS**.
-2. Open the three-dot menu and choose **Custom repositories**.
-3. Add `https://github.com/novygh/enea-rcem` as type **Integration**.
-4. Download **Enea RCEm**.
-5. Restart Home Assistant.
-6. Go to **Settings → Devices & services → Add integration → Enea RCEm**.
-7. Select the existing cumulative grid-import and grid-export sensors.
+1. Otwórz **HACS**.
+2. Otwórz menu z trzema kropkami i wybierz **Niestandardowe repozytoria**.
+3. Dodaj `https://github.com/novygh/enea-rcem` jako typ **Integracja**.
+4. Pobierz **Enea RCEm**.
+5. Uruchom ponownie Home Assistanta.
+6. Przejdź do **Ustawienia → Urządzenia i usługi → Dodaj integrację → Enea RCEm**.
+7. Wybierz istniejące skumulowane sensory importu i eksportu energii z sieci.
 
-## Configuration
+## Konfiguracja
 
-The setup/configuration flow contains Enea / Enea Operator G11 tariff values used by the integration. Values remain editable through the integration's **Configure** action.
+Formularz konfiguracji zawiera stawki Enea / Enea Operator G11 używane przez integrację. Wartości można później zmieniać przez akcję **Konfiguruj** integracji.
 
-In particular, verify against your own contract/invoice:
+W szczególności porównaj z własną umową lub fakturą:
 
-- active-energy price,
-- commercial fee,
-- distribution and statutory tariff components,
+- cenę energii czynnej,
+- opłatę handlową,
+- składniki taryfy dystrybucyjnej i opłat ustawowych,
 - VAT,
-- import/export calibration values if used.
+- wartości kalibracji importu/eksportu, jeżeli są używane.
 
-Calibration is applied **after hourly net balancing**, so changing an import correction does not alter export balancing and vice versa.
+Kalibracja jest stosowana **po godzinowym bilansowaniu**, dlatego zmiana korekty importu nie wpływa na bilansowanie eksportu i odwrotnie.
 
-## Restart and missing-data recovery
+## Restart i odzyskiwanie brakujących danych
 
-The physical source sensors are expected to be cumulative meters that retain their totals while Home Assistant is offline.
+Fizyczne sensory źródłowe powinny być licznikami skumulowanymi, które zachowują swoje wartości całkowite podczas wyłączenia Home Assistanta.
 
-If Home Assistant restarts across one or more hourly boundaries and both source baselines remain trustworthy, Enea RCEm:
+Jeżeli Home Assistant uruchomi się ponownie po przekroczeniu jednej lub kilku granic godzin, a obie wartości bazowe źródeł pozostaną wiarygodne, Enea RCEm:
 
-1. reads the new cumulative totals,
-2. calculates the missing import/export delta,
-3. distributes that delta over the elapsed hourly buckets,
-4. continues hourly balancing,
-5. preserves the total recovered kWh,
-6. does **not** increment `Data gaps`.
+1. odczytuje nowe wartości skumulowane,
+2. oblicza brakujący przyrost importu i eksportu,
+3. rozdziela ten przyrost pomiędzy brakujące przedziały godzinowe,
+4. kontynuuje bilansowanie godzinowe,
+5. zachowuje całkowitą odzyskaną liczbę kWh,
+6. **nie** zwiększa sensora `Luki danych`.
 
-If a baseline is missing or a source meter decreases/reset unexpectedly, the integration rebases the affected source, preserves any trustworthy delta from the other source, and increments `Data gaps`.
+Jeżeli brakuje wartości bazowej albo licznik źródłowy niespodziewanie maleje/resetuje się, integracja ustala nową bazę dla danego źródła, zachowuje wiarygodny przyrost z drugiego źródła i zwiększa `Luki danych`.
 
-## RCEm corrections
+## Korekty RCEm
 
-PSE can publish corrected RCEm values after the original publication. The integration periodically reconciles Recorder long-term statistics so a later correction is reflected in the original export month instead of being posted as a new amount in the month when the correction was published.
+PSE może publikować poprawione wartości RCEm po pierwotnej publikacji. Integracja okresowo uzgadnia długoterminowe statystyki Recorder, dzięki czemu późniejsza korekta jest przypisywana do pierwotnego miesiąca eksportu zamiast do miesiąca, w którym opublikowano korektę.
 
-Recorder calculations explicitly request energy in **kWh**, so changing the display unit of the energy sensors to MWh does not affect settlement mathematics.
+Obliczenia Recorder jawnie żądają energii w **kWh**, dlatego zmiana jednostki wyświetlania sensorów energii na MWh nie wpływa na matematykę rozliczeń.
 
-## Prosumer deposit
+## Depozyt prosumencki
 
-The deposit model is reconstructed from monthly Recorder statistics. Export value is assigned to the following settlement month and deposit lots are consumed oldest-first according to the implemented settlement rules.
+Model depozytu jest rekonstruowany na podstawie miesięcznych statystyk Recorder. Wartość eksportu jest przypisywana do następnego miesiąca rozliczeniowego, a partie depozytu są zużywane od najstarszej zgodnie z zaimplementowanymi zasadami rozliczeń.
 
-Deposit sensors are current snapshots; the cumulative historical accounting remains in Recorder statistics and the cumulative import/export/cost/compensation sensors.
+Sensory depozytu są bieżącymi migawkami. Skumulowana historia rozliczeń pozostaje w statystykach Recorder oraz w skumulowanych sensorach importu, eksportu, kosztu i rekompensaty.
 
-## Historical data and recovery tools
+## Dane historyczne i narzędzia odzyskiwania
 
-Version 1.1.1 does **not** automatically invent pre-installation history. Advanced migration and diagnostic tooling is included in `tools/` for installations where trustworthy historical cumulative meter statistics already exist.
+Wersja 1.1.1 **nie** tworzy automatycznie historii sprzed instalacji. Zaawansowane narzędzia migracyjne i diagnostyczne znajdują się w katalogu `tools/` i są przeznaczone dla instalacji, w których istnieją wiarygodne historyczne statystyki skumulowanych liczników.
 
-The production integration does not expose one-shot database repair services. The temporary services used to repair the diagnosed 2026-08-25 migration boundary were removed after verification; their source remains available in Git history. A read-only Recorder continuity audit is provided as `tools/recorder_statistics_audit.py` for future investigations.
+Produkcyjna integracja nie udostępnia jednorazowych usług naprawiających bazę danych. Tymczasowe usługi użyte do naprawy zdiagnozowanej granicy migracji z 2026-08-25 zostały usunięte po weryfikacji; ich kod pozostaje dostępny w historii Git. Do przyszłych analiz służy narzędzie tylko do odczytu `tools/recorder_statistics_audit.py` sprawdzające ciągłość statystyk Recorder.
 
-Historical writes to Recorder should be treated as an advanced operation: make a Home Assistant backup first and validate the resulting long-term statistics after migration. See `tools/README.md` before using any migration helper.
+Historyczne zapisy do Recorder należy traktować jako operację zaawansowaną: przed migracją wykonaj kopię zapasową Home Assistanta i po migracji sprawdź wynikowe statystyki długoterminowe. Przed użyciem narzędzi migracyjnych przeczytaj `tools/README.md`.
 
-## Data sources
+## Źródła danych
 
-- local Home Assistant cumulative import/export energy sensors,
-- PSE monthly RCEm publication,
-- configured Enea seller / Enea Operator tariff values,
-- Home Assistant Recorder long-term statistics for reconciliation, daily settlement detail, and deposit reconstruction.
+- lokalne skumulowane sensory importu i eksportu energii w Home Assistant,
+- miesięczne publikacje RCEm PSE,
+- skonfigurowane stawki sprzedawcy Enea / Enea Operator,
+- długoterminowe statystyki Home Assistant Recorder używane do uzgodnień, szczegółów dziennych i rekonstrukcji depozytu.
 
-## Disclaimer
+## Zastrzeżenie
 
-This project is independent and is not affiliated with Enea S.A., Enea Operator, PSE, or Home Assistant. It is not a substitute for an electricity invoice or official settlement statement.
+Projekt jest niezależny i nie jest powiązany z Enea S.A., Enea Operator, PSE ani Home Assistant. Nie zastępuje faktury za energię ani oficjalnego rozliczenia.
