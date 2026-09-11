@@ -2,7 +2,7 @@
 
 Niestandardowa integracja dla Home Assistanta przeznaczona do rozliczeń prosumenckich z **Enea / Enea Operator G11** z wykorzystaniem miesięcznych wartości **PSE RCEm**.
 
-**Aktualna stabilna wersja: 1.1.1**
+**Aktualna stabilna wersja: 1.1.2**
 
 > Projekt służy do odtwarzania i monitorowania logiki rozliczeń w Home Assistant. Wartości taryf i końcowe rozliczenia należy zawsze porównywać z własną umową i fakturą.
 
@@ -25,7 +25,8 @@ Integracja:
 - nalicza stałe opłaty miesięczne proporcjonalnie w ciągu miesiąca,
 - odtwarza wiarygodne przyrosty liczników skumulowanych po restartach Home Assistanta,
 - rozdziela odzyskany wielogodzinny przyrost pomiędzy brakujące przedziały godzinowe zamiast gubić energię,
-- zwiększa diagnostykę **Luki danych** wyłącznie wtedy, gdy brakuje wiarygodnej wartości bazowej któregoś źródła,
+- zwiększa diagnostykę **Luki danych** wyłącznie wtedy, gdy brakuje wiarygodnej wartości bazowej albo licznik źródłowy maleje/resetuje się,
+- zapisuje szczegóły ostatniej rzeczywistej luki: czas, źródło, przyczynę oraz wartości licznika przed i po zdarzeniu,
 - rekonstruuje depozyt prosumencki ze statystyk Recorder,
 - przechowuje trwałe liczniki robocze w magazynie danych Home Assistanta bez dodatkowych helperów.
 
@@ -76,7 +77,16 @@ Jeżeli bezpośrednio poprzedzający miesiąc kalendarzowy nie jest jeszcze rozl
 
 - **Energia przed PV** — informacyjna stała: 1032 kWh dla pełnego okresu fakturowego od 2024-03-20 do 2024-06-11.
 - **Koszt przed PV** — informacyjna stała: 1123,66 PLN dla tego samego pełnego okresu fakturowego.
-- **Luki danych** — licznik zwiększany tylko wtedy, gdy co najmniej jedna bazowa wartość skumulowanego licznika źródłowego jest brakująca lub niewiarygodna. Zwykły restart, po którym możliwe jest odzyskanie przyrostów skumulowanych, nie jest traktowany jako luka.
+- **Luki danych** — licznik zwiększany tylko wtedy, gdy co najmniej jedna bazowa wartość skumulowanego licznika źródłowego jest brakująca/niewiarygodna albo licznik niespodziewanie maleje. Zwykły restart, brak komunikacji lub brak zasilania nie są same w sobie luką, jeżeli po powrocie z wartości skumulowanych można wiarygodnie odzyskać całkowity przyrost.
+
+Sensor **Luki danych** udostępnia atrybuty diagnostyczne:
+
+- `diagnostics_version`,
+- `last_gap_time`,
+- `last_gap_source`,
+- `last_gap_reason`,
+- `last_gap_previous`,
+- `last_gap_current`.
 
 Sensory referencyjne sprzed PV są wyłącznie informacyjne. Nie są uwzględniane w obliczeniach RCEm, skumulowanych licznikach okresu PV ani statystykach Energy Dashboard. Historyczne rozliczenia prosumenckie zaczynają się od 2024-06-12.
 
@@ -130,7 +140,7 @@ Jeżeli Home Assistant uruchomi się ponownie po przekroczeniu jednej lub kilku 
 5. zachowuje całkowitą odzyskaną liczbę kWh,
 6. **nie** zwiększa sensora `Luki danych`.
 
-Jeżeli brakuje wartości bazowej albo licznik źródłowy niespodziewanie maleje/resetuje się, integracja ustala nową bazę dla danego źródła, zachowuje wiarygodny przyrost z drugiego źródła i zwiększa `Luki danych`.
+Jeżeli brakuje wartości bazowej albo licznik źródłowy niespodziewanie maleje/resetuje się, integracja ustala nową bazę dla danego źródła, zachowuje wiarygodny przyrost z drugiego źródła i zwiększa `Luki danych`. Wersja 1.1.2 wprowadza diagnostykę v2 i jednorazowo zeruje historyczny licznik luk zapisany przez starsze wersje, ponieważ wcześniejszy kod mógł błędnie policzyć poprawną rekonstrukcję po restarcie jako lukę.
 
 ## Korekty RCEm
 
@@ -146,7 +156,7 @@ Sensory depozytu są bieżącymi migawkami. Skumulowana historia rozliczeń pozo
 
 ## Dane historyczne i narzędzia odzyskiwania
 
-Wersja 1.1.1 **nie** tworzy automatycznie historii sprzed instalacji. Zaawansowane narzędzia migracyjne i diagnostyczne znajdują się w katalogu `tools/` i są przeznaczone dla instalacji, w których istnieją wiarygodne historyczne statystyki skumulowanych liczników.
+Wersja 1.1.2 **nie** tworzy automatycznie historii sprzed instalacji. Zaawansowane narzędzia migracyjne i diagnostyczne znajdują się w katalogu `tools/` i są przeznaczone dla instalacji, w których istnieją wiarygodne historyczne statystyki skumulowanych liczników.
 
 Produkcyjna integracja nie udostępnia jednorazowych usług naprawiających bazę danych. Tymczasowe usługi użyte do naprawy zdiagnozowanej granicy migracji z 2026-08-25 zostały usunięte po weryfikacji; ich kod pozostaje dostępny w historii Git. Do przyszłych analiz służy narzędzie tylko do odczytu `tools/recorder_statistics_audit.py` sprawdzające ciągłość statystyk Recorder.
 
