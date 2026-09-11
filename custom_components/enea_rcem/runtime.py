@@ -200,6 +200,7 @@ class EneaRcemRuntime:
         self._data.setdefault("last_import_time", None)
         self._data.setdefault("last_export_time", None)
 
+        self._migrate_gap_diagnostics()
         self._load_cached_rcem()
         self._resume_source_totals(now)
 
@@ -250,7 +251,65 @@ class EneaRcemRuntime:
             "monthly_compensation": {},
             "rcem_prices": {},
             "gap_count": 0,
+            "gap_diagnostics_version": 2,
+            "last_gap_time": None,
+            "last_gap_source": None,
+            "last_gap_reason": None,
+            "last_gap_previous": None,
+            "last_gap_current": None,
         }
+
+    def _migrate_gap_diagnostics(self) -> None:
+        """Migrate legacy gap diagnostics to the reliable v2 semantics."""
+        try:
+            version = int(self._data.get("gap_diagnostics_version", 1))
+        except (TypeError, ValueError):
+            version = 1
+
+        if version < 2:
+            try:
+                legacy_count = int(self._data.get("gap_count", 0))
+            except (TypeError, ValueError):
+                legacy_count = 0
+
+            if legacy_count:
+                _LOGGER.info(
+                    "Resetting legacy data gap count %d because older releases "
+                    "could count a clean restart recovery as a data gap",
+                    legacy_count,
+                )
+
+            self._data["gap_count"] = 0
+            self._data["last_gap_time"] = None
+            self._data["last_gap_source"] = None
+            self._data["last_gap_reason"] = None
+            self._data["last_gap_previous"] = None
+            self._data["last_gap_current"] = None
+
+        self._data["gap_diagnostics_version"] = 2
+        self._data.setdefault("gap_count", 0)
+        self._data.setdefault("last_gap_time", None)
+        self._data.setdefault("last_gap_source", None)
+        self._data.setdefault("last_gap_reason", None)
+        self._data.setdefault("last_gap_previous", None)
+        self._data.setdefault("last_gap_current", None)
+
+    def _record_gap(
+        self,
+        *,
+        source: str,
+        reason: str,
+        now: datetime,
+        previous: float | None = None,
+        current: float | None = None,
+    ) -> None:
+        """Record a real, unrecoverable source-data continuity problem."""
+        self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
+        self._data["last_gap_time"] = now.isoformat()
+        self._data["last_gap_source"] = source
+        self._data["last_gap_reason"] = reason
+        self._data["last_gap_previous"] = previous
+        self._data["last_gap_current"] = current
 
     def _load_cached_rcem(self) -> None:
         cached = self._data.get("rcem_prices", {})
@@ -393,7 +452,17 @@ class EneaRcemRuntime:
 
         recovery_problem = import_problem or export_problem
         if recovery_problem:
-            self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
+            problem_sources: list[str] = []
+            if import_problem:
+                problem_sources.append("import")
+            if export_problem:
+                problem_sources.append("export")
+
+            self._record_gap(
+                source="+".join(problem_sources) or "unknown",
+                reason="untrusted_baseline_after_restart",
+                now=now,
+            )
             _LOGGER.warning(
                 "One or more source meter baselines were missing or decreased "
                 "across restart; preserved the trustworthy positive delta from "
@@ -540,7 +609,13 @@ class EneaRcemRuntime:
                     float(previous),
                     current,
                 )
-                self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
+                self._record_gap(
+                    source=kind,
+                    reason="meter_decreased_during_restart",
+                    now=now,
+                    previous=float(previous),
+                    current=current,
+                )
         self._data[key] = current
         self._data[f"last_{kind}_time"] = now.isoformat()
 
@@ -582,7 +657,13 @@ class EneaRcemRuntime:
                 float(previous),
                 value,
             )
-            self._data["gap_count"] = int(self._data.get("gap_count", 0)) + 1
+            self._record_gap(
+                source=kind,
+                reason="meter_decreased",
+                now=now,
+                previous=float(previous),
+                current=value,
+            )
         elif delta > 0:
             self._data[f"bucket_{kind}"] = (
                 float(self._data.get(f"bucket_{kind}", 0.0)) + delta
