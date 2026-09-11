@@ -359,6 +359,14 @@ SENSORS: tuple[EneaRcemSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda r: r.gap_count,
+        attrs_fn=lambda r: {
+            "diagnostics_version": r._data.get("gap_diagnostics_version", 2),
+            "last_gap_time": r._data.get("last_gap_time"),
+            "last_gap_source": r._data.get("last_gap_source"),
+            "last_gap_reason": r._data.get("last_gap_reason"),
+            "last_gap_previous": r._data.get("last_gap_previous"),
+            "last_gap_current": r._data.get("last_gap_current"),
+        },
     ),
 )
 
