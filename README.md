@@ -2,7 +2,17 @@
 
 Niestandardowa integracja dla Home Assistanta przeznaczona do rozliczeń prosumenckich z **Enea / Enea Operator G11** z wykorzystaniem miesięcznych wartości **PSE RCEm**.
 
-**Aktualna stabilna wersja: 1.1.2**
+**Wersja: 1.1.3**
+
+### Zmiana abonamentu 2026
+
+- Do 30.09.2026: dotychczasowa stawka abonamentowa (konfigurowalna).
+- 01.10–01.12.2026: brak opłaty abonamentowej dystrybutora.
+- Od 02.12.2026: 7,94 PLN netto/mies. (9,77 PLN brutto po zaokrągleniu), przy założeniu stosowania taryfy sprzedawcy dla prosumentów.
+- Stawka wybierana według lokalnej daty rozliczanej godziny, również przy odzyskiwaniu danych po restarcie. Grudzień jest proporcjonalnie rozliczany zgodnie z dotychczasowym modelem godzinowym; rzeczywisty sposób rozliczenia należy potwierdzić fakturą.
+- Cena energii 0,4879 i opłata handlowa 10,24 w historii pochodzą z faktur użytkownika; nie zastępujemy ich taryfą regulowaną 0,5030/0,00 bez potwierdzenia warunków umowy. Live zachowuje indywidualne opcje pozostałych stawek.
+- Aktualizacja nie przepisuje istniejących statystyk Recorder. Nadpłacony w modelu abonament od października wymaga osobnej, zweryfikowanej korekty historii.
+- Źródła: [Enea Operator](https://www.operator.enea.pl/media/5194/enea-operatorinformacja-stawkach-brutto01102026-31122026pdf.pdf), [decyzje URE](https://bip.ure.gov.pl/bip/taryfy-i-inne-decyzje-b/energia-elektryczna/4911,Taryfy-opublikowane-w-2026-r.html), powiadomienie Enea Sprzedaż z 25.11.2026.
 
 > Projekt służy do odtwarzania i monitorowania logiki rozliczeń w Home Assistant. Wartości taryf i końcowe rozliczenia należy zawsze porównywać z własną umową i fakturą.
 
