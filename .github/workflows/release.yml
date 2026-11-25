@@ -21,6 +21,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Run regression checks
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 -m compileall -q custom_components tools
+
       - name: Read and validate version
         id: version
         shell: bash
