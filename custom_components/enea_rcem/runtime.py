@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 import logging
 from typing import Any
 
@@ -53,6 +53,7 @@ from .const import (
     STORAGE_VERSION,
 )
 from .rcem import RcemClient, RcemPrice
+from .tariffs import subscription_fee_for_date
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -136,11 +137,17 @@ class EneaRcemRuntime:
 
     @property
     def fixed_monthly_gross(self) -> float:
+        return self.fixed_monthly_gross_for_date(dt_util.now().date())
+
+    def fixed_monthly_gross_for_date(self, value: date) -> float:
+        """Calculate fixed rates for the local date of the billed hour."""
         net = (
             self._rate(CONF_COMMERCIAL_FEE_NET, DEFAULT_COMMERCIAL_FEE_NET)
             + self._rate(CONF_FIXED_NETWORK_NET, DEFAULT_FIXED_NETWORK_NET)
             + self._rate(CONF_CAPACITY_FEE_NET, DEFAULT_CAPACITY_FEE_NET)
-            + self._rate(CONF_SUBSCRIPTION_FEE_NET, DEFAULT_SUBSCRIPTION_FEE_NET)
+            + subscription_fee_for_date(
+                value, self._rate(CONF_SUBSCRIPTION_FEE_NET, DEFAULT_SUBSCRIPTION_FEE_NET)
+            )
             + self._rate(CONF_TRANSITION_FEE_NET, DEFAULT_TRANSITION_FEE_NET)
         )
         return net * self.vat_multiplier
@@ -736,7 +743,10 @@ class EneaRcemRuntime:
         self._data["monthly_import"] = monthly_import
         self._data["monthly_export"] = monthly_export
 
-        fixed_hour = self.fixed_monthly_gross / self._hours_in_month(hour_key)
+        fixed_hour = (
+            self.fixed_monthly_gross_for_date(datetime.fromisoformat(hour_key).date())
+            / self._hours_in_month(hour_key)
+        )
         variable = balanced_import * self.variable_rate_gross
         self._data["import_cost_total"] = (
             self.import_cost_total + fixed_hour + variable

@@ -10,7 +10,7 @@ being reconstructed. Do not use today's tariff to recalculate older energy.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 
 
@@ -69,7 +69,24 @@ class TariffPeriod:
         return self.fixed_monthly_net * (1.0 + self.vat_rate / 100.0)
 
 
-# Effective periods verified against Enea invoices.
+# Subscription changes confirmed by Enea Operator (1 October 2026) and
+# Enea Sprzedaż notification (2 December 2026). The new seller rate is 7.94
+# PLN net (9.77 PLN gross after invoice rounding).
+DISTRIBUTION_SUBSCRIPTION_END = date(2026, 10, 1)
+SELLER_SUBSCRIPTION_START = date(2026, 12, 2)
+SELLER_SUBSCRIPTION_NET = 7.94
+
+
+def subscription_fee_for_date(value: date, legacy_fee_net: float) -> float:
+    """Return the applicable prosumer subscription, never both fees."""
+    if value >= SELLER_SUBSCRIPTION_START:
+        return SELLER_SUBSCRIPTION_NET
+    if value >= DISTRIBUTION_SUBSCRIPTION_END:
+        return 0.0
+    return legacy_fee_net
+
+
+# Effective periods verified against Enea invoices and subsequent notices.
 # End dates are exclusive.
 HISTORICAL_TARIFFS: tuple[TariffPeriod, ...] = (
     TariffPeriod(
@@ -144,7 +161,7 @@ HISTORICAL_TARIFFS: tuple[TariffPeriod, ...] = (
     ),
     TariffPeriod(
         start=date(2026, 2, 1),
-        end=None,
+        end=DISTRIBUTION_SUBSCRIPTION_END,
         energy_price_net=0.4879,
         commercial_fee_net=10.24,
         variable_network_net=0.2456,
@@ -156,6 +173,15 @@ HISTORICAL_TARIFFS: tuple[TariffPeriod, ...] = (
         subscription_fee_net=0.32,
         transition_fee_net=0.00,
     ),
+)
+
+# Preserve invoice-derived energy and all unrelated charges. Only the
+# subscription changes here; the actual contract price remains editable live.
+HISTORICAL_TARIFFS += (
+    replace(HISTORICAL_TARIFFS[-1], start=DISTRIBUTION_SUBSCRIPTION_END,
+            end=SELLER_SUBSCRIPTION_START, subscription_fee_net=0.0),
+    replace(HISTORICAL_TARIFFS[-1], start=SELLER_SUBSCRIPTION_START,
+            end=None, subscription_fee_net=SELLER_SUBSCRIPTION_NET),
 )
 
 

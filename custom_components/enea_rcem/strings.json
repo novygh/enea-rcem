@@ -24,7 +24,7 @@
           "cogeneration_net": "Cogeneration fee net [PLN/kWh]",
           "fixed_network_net": "Fixed network fee net [PLN/month]",
           "capacity_fee_net": "Capacity fee net [PLN/month]",
-          "subscription_fee_net": "Subscription fee net [PLN/month]",
+          "subscription_fee_net": "Historical subscription fee (before 2026-10-01) net [PLN/month]",
           "transition_fee_net": "Transition fee net [PLN/month]",
           "vat_rate": "VAT [%]"
         }
@@ -50,7 +50,7 @@
           "cogeneration_net": "Cogeneration fee net [PLN/kWh]",
           "fixed_network_net": "Fixed network fee net [PLN/month]",
           "capacity_fee_net": "Capacity fee net [PLN/month]",
-          "subscription_fee_net": "Subscription fee net [PLN/month]",
+          "subscription_fee_net": "Historical subscription fee (before 2026-10-01) net [PLN/month]",
           "transition_fee_net": "Transition fee net [PLN/month]",
           "vat_rate": "VAT [%]"
         }
