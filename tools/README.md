@@ -57,3 +57,19 @@ python3 tools/subscription_migration_plan.py
 ```
 
 Compares the actual hourly Recorder cost and import changes against the legacy and new fee model, reads the runtime Store and retained alignment targets, and saves a private JSON plan. It never writes to Recorder or the integration Store. Unknown hours, gaps, changed tariff options, incomplete aggregation and mismatches must be reviewed before applying any repair. Do not run the old backfill tool to repair this incident. A plan is not an executable SQL migration; application requires inspection of actual results and a full backup.
+
+## Subscription repair service (1.1.5)
+
+After a full HA and Recorder database backup, install 1.1.5 and restart HA.
+Call `enea_rcem.repair_subscription_2026` in Developer Tools > Actions with
+`apply: false` (default), then review the returned report. If it is correct,
+call with `apply: true`. Run between minute 15 and 45 of the hour, to allow
+Recorder alignment to complete and avoid the hourly boundary. The service
+checks every completed hour in the affected interval against both models and
+refuses missing, ambiguous or unexpected values. It fixes retained targets
+and uses Recorder's existing sum adjustment API, which affects both hourly
+and short-term cumulative sums. Raw sensor state and the cumulative runtime
+baseline intentionally stay unchanged, preventing a second adjustment when
+Recorder sees the next sensor state. The Energy Dashboard uses corrected sums.
+A persistent pending marker prevents blind retries after interruption; a completed
+marker does not prevent a new read-only audit. No energy or export data is written.

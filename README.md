@@ -2,7 +2,9 @@
 
 Niestandardowa integracja dla Home Assistanta przeznaczona do rozliczeń prosumenckich z **Enea / Enea Operator G11** z wykorzystaniem miesięcznych wartości **PSE RCEm**.
 
-**Wersja: 1.1.4**
+**Wersja: 1.1.5**
+
+1.1.5: ręczna, jednorazowa usługa `enea_rcem.repair_subscription_2026` koryguje potwierdzone stare opłaty w sumach Recorder i celach synchronizacji. Domyślnie podgląd; szczegóły w `tools/README.md`.
 
 1.1.4: wyrównanie statystyk używa daty rozliczanej godziny, tak samo jak runtime. Dodano narzędzie diagnostyczne migracji abonamentu (`tools/subscription_migration_plan.py`).
 

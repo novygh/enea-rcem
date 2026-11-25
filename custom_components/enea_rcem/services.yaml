@@ -1,0 +1,10 @@
+repair_subscription_2026:
+  name: Repair October 2026 subscription
+  description: Correct verified legacy subscription charges in Recorder sums. Back up HA and its database first. Default is dry run.
+  fields:
+    apply:
+      name: Apply
+      description: Set true only after reviewing the dry run and making a backup.
+      default: false
+      selector:
+        boolean:

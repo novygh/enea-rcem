@@ -11,6 +11,7 @@ from .deposit import DepositCoordinator
 from .runtime import EneaRcemRuntime
 from .settled_daily import SettledDailyCoordinator
 from .statistics_alignment import StatisticsAligner
+from .subscription_repair import register_subscription_repair
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -37,6 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await reconciler.async_setup()
     await deposit.async_setup()
     await settled_daily.async_setup()
+    register_subscription_repair(hass)
     return True
 
 
