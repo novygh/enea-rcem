@@ -59,8 +59,9 @@ class StatisticsAligner:
         raw_balanced_export = max(exp - imp, 0.0)
         balanced_import = raw_balanced_import * self.runtime.import_correction_multiplier
         balanced_export = raw_balanced_export * self.runtime.export_correction_multiplier
-        fixed_hour = self.runtime.fixed_monthly_gross / self.runtime._hours_in_month(
-            hour_key
+        fixed_hour = (
+            self.runtime.fixed_monthly_gross_for_date(datetime.fromisoformat(hour_key).date())
+            / self.runtime._hours_in_month(hour_key)
         )
         import_cost = fixed_hour + balanced_import * self.runtime.variable_rate_gross
 

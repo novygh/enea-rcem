@@ -2,7 +2,9 @@
 
 Niestandardowa integracja dla Home Assistanta przeznaczona do rozliczeń prosumenckich z **Enea / Enea Operator G11** z wykorzystaniem miesięcznych wartości **PSE RCEm**.
 
-**Wersja: 1.1.3**
+**Wersja: 1.1.4**
+
+1.1.4: wyrównanie statystyk używa daty rozliczanej godziny, tak samo jak runtime. Dodano narzędzie diagnostyczne migracji abonamentu (`tools/subscription_migration_plan.py`).
 
 ### Zmiana abonamentu 2026
 

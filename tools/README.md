@@ -47,3 +47,13 @@ commit `5232791d68069c7137e613a8d83973711753bd45`.
 For future incidents, start with the read-only audit tool and create a new,
 guarded repair only after the exact failure mode and affected Recorder layer are
 proven.
+
+## `subscription_migration_plan.py`
+
+Read-only phase of the October 2026 subscription repair. Run in the HA add-on terminal with access to /config and SUPERVISOR_TOKEN:
+
+```bash
+python3 tools/subscription_migration_plan.py
+```
+
+Compares the actual hourly Recorder cost and import changes against the legacy and new fee model, reads the runtime Store and retained alignment targets, and saves a private JSON plan. It never writes to Recorder or the integration Store. Unknown hours, gaps, changed tariff options, incomplete aggregation and mismatches must be reviewed before applying any repair. Do not run the old backfill tool to repair this incident. A plan is not an executable SQL migration; application requires inspection of actual results and a full backup.
